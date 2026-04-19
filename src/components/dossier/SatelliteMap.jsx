@@ -17,6 +17,7 @@ import { analyzeRoofFromGPS } from "@/lib/ignRoofAnalysis";
 import { fetchBuildingFromBDTOPO } from "@/lib/bdtopoBuilding";
 import { fetchPVGISForPan } from "@/lib/pvgisApi";
 import { analyzeRoofObstacles } from "@/lib/roofObstacleVision";
+import { detectRoofPans } from "@/lib/roofPanVision";
 
 const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const GOOGLE_SOLAR_KEY = import.meta.env.VITE_GOOGLE_SOLAR_KEY;
@@ -304,6 +305,8 @@ function makeSnapPolygonMode(solarDataRef, snapMarkerRef, pansRef) {
   };
 }
 
+const AI_PAN_COLORS = ['#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981'];
+
 function MapController({
   address, panel, orientation, pans, setPans,
   isDrawing, setIsDrawing, currentPanIndex,
@@ -312,6 +315,7 @@ function MapController({
   showLabels, setShowLabels,
   onRoofAreaChange, onMaxPanelsChange, onCaptureReady,
   onRoofDimensionsChange, solarDataRef, onDataReady, onSolarReady,
+  onAIPansDetected, onAIValidateReady,
 }) {
   const { current: map } = useMap();
   const drawRef = useRef(null);
@@ -325,6 +329,8 @@ function MapController({
   useEffect(() => { pansRef.current = pans; }, [pans]);
 
   // Toujours à jour grâce à la ré-affectation à chaque rendu (pattern ref-callback)
+  const aiDetectedPansRef = useRef([]);
+  const validateAIPansRef = useRef(null);
   const createPanFromCoordsRef = useRef(null);
   createPanFromCoordsRef.current = async (polyCoords, drawId, forcedSeg = null, forcedSegIdx = null) => {
     const a       = forcedSeg ? Math.round(forcedSeg.stats?.areaMeters2 ?? geojsonArea(polyCoords)) : Math.round(geojsonArea(polyCoords));
@@ -489,6 +495,15 @@ function MapController({
         paint: { "text-color": "#fff", "text-halo-color": "#c00", "text-halo-width": 1.5 }
       });
     }
+    if (!mbMap.getSource("ai-pans-detected")) {
+      mbMap.addSource("ai-pans-detected", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      mbMap.addLayer({ id: "ai-pans-fill", type: "fill", source: "ai-pans-detected", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.25 } });
+      mbMap.addLayer({ id: "ai-pans-line", type: "line", source: "ai-pans-detected", paint: { "line-color": ["get", "color"], "line-width": 2.5, "line-dasharray": [5, 3] } });
+      mbMap.addLayer({ id: "ai-pans-label", type: "symbol", source: "ai-pans-detected",
+        layout: { "text-field": ["get", "label"], "text-size": 11, "text-anchor": "center", "text-allow-overlap": true },
+        paint: { "text-color": "#fff", "text-halo-color": ["get", "color"], "text-halo-width": 2 },
+      });
+    }
     panelsSrcReady.current = true;
 
     let isAutoClipping = false;
@@ -620,6 +635,53 @@ function MapController({
       const mk = new mapboxgl.Marker({ element: el }).setLngLat([c.lon, c.lat]).addTo(mbMap);
       markersRef.current.push(mk);
       mbMap.flyTo({ center: [c.lon, c.lat], zoom: 20, pitch: 45, bearing: 0, duration: 2000 });
+
+      // ── Détection automatique des pans par IA Vision (après chargement tuiles) ──
+      const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+      if (apiKey && window.location.hostname === 'localhost') {
+        onAIPansDetected?.(null); // signal: détection en cours
+        mbMap.once('idle', async () => {
+          try {
+            const canvas = mbMap.getCanvas();
+            const b64 = canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+            const rawPans = await detectRoofPans(b64);
+            const container = mbMap.getContainer();
+            const w = container.offsetWidth;
+            const h = container.offsetHeight;
+            const pansWithGps = rawPans.map((pan, i) => {
+              const ring = (pan.coordonnees_pourcentage ?? []).map(({ x, y }) => {
+                const ll = mbMap.unproject({ x: (x / 100) * w, y: (y / 100) * h });
+                return [ll.lng, ll.lat];
+              });
+              if (ring.length > 0) ring.push(ring[0]);
+              return { ...pan, coords_gps: [ring], color: AI_PAN_COLORS[i % AI_PAN_COLORS.length] };
+            });
+            aiDetectedPansRef.current = pansWithGps;
+            validateAIPansRef.current = async () => {
+              for (const pan of aiDetectedPansRef.current) {
+                if (pan.coords_gps?.[0]?.length >= 4)
+                  await createPanFromCoordsRef.current?.(pan.coords_gps);
+              }
+              mbMap.getSource('ai-pans-detected')?.setData({ type: 'FeatureCollection', features: [] });
+              aiDetectedPansRef.current = [];
+              onAIPansDetected?.([]);
+            };
+            onAIValidateReady?.(validateAIPansRef);
+            mbMap.getSource('ai-pans-detected')?.setData({
+              type: 'FeatureCollection',
+              features: pansWithGps.map(p => ({
+                type: 'Feature',
+                properties: { label: `Pan IA ${p.id}\n${p.orientation}`, color: p.color },
+                geometry: { type: 'Polygon', coordinates: p.coords_gps },
+              })),
+            });
+            onAIPansDetected?.(pansWithGps);
+          } catch (e) {
+            console.warn('[AI Pans]', e.message);
+            onAIPansDetected?.([]);
+          }
+        });
+      }
 
       // Chargement silencieux Solar + IGN en arrière-plan
       const [solarResult, ignResult] = await Promise.allSettled([
@@ -858,6 +920,9 @@ export default function SatelliteMap({
   const [showSolarSegs,  setShowSolarSegs]  = useState(false);
   const [bdtopoBuilding, setBdtopoBuilding] = useState(null);
   const [roseForPan,      setRoseForPan]      = useState(null);
+  const [aiDetectedPans,  setAiDetectedPans]  = useState(null); // null=idle, []=not found, [...]= detected
+  const [aiDetecting,     setAiDetecting]     = useState(false);
+  const validateAIRef = useRef(null);
   const [selectedSolarSegs, setSelectedSolarSegs] = useState(new Set());
   const solarDataRef = useRef(null);
   const prevPansRef  = useRef([]);
@@ -1137,6 +1202,11 @@ export default function SatelliteMap({
             onCaptureReady={onCaptureReady} onRoofDimensionsChange={onRoofDimensionsChange}
             solarDataRef={solarDataRef} onDataReady={() => setDataReady(true)}
             onSolarReady={(segs) => { setSolarReady(true); setSolarSegments(segs || []); }}
+            onAIPansDetected={(pans) => {
+              if (pans === null) { setAiDetecting(true); setAiDetectedPans(null); }
+              else { setAiDetecting(false); setAiDetectedPans(pans); }
+            }}
+            onAIValidateReady={(ref) => { validateAIRef.current = ref; }}
           />
         </Map>
 
@@ -1144,6 +1214,46 @@ export default function SatelliteMap({
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 text-black text-xs font-bold px-4 py-1.5 rounded-full shadow-lg pointer-events-none whitespace-nowrap"
             style={{ background: PAN_COLORS[currentPanIndex % PAN_COLORS.length] }}>
             &#9999;&#65039; PAN {currentPanIndex + 1} &#8212; Double-cliquez pour terminer
+          </div>
+        )}
+
+        {/* ── Overlay détection IA pans ───────────────────────────── */}
+        {aiDetecting && (
+          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-card/90 border border-blue-500/40 rounded-full px-4 py-2 shadow-lg text-sm text-blue-300">
+            <div className="w-3 h-3 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+            Analyse IA des pans en cours…
+          </div>
+        )}
+        {!aiDetecting && aiDetectedPans !== null && (
+          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 bg-card border border-border rounded-xl shadow-xl p-3 flex flex-col gap-2 min-w-[280px] max-w-xs">
+            {aiDetectedPans.length === 0 ? (
+              <div className="text-sm text-muted-foreground text-center">Aucun pan détecté par l'IA</div>
+            ) : (
+              <>
+                <div className="text-sm font-semibold text-foreground">
+                  🤖 {aiDetectedPans.length} pan{aiDetectedPans.length > 1 ? 's' : ''} détecté{aiDetectedPans.length > 1 ? 's' : ''} par IA
+                </div>
+                <div className="flex flex-col gap-1">
+                  {aiDetectedPans.map(p => (
+                    <div key={p.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: p.color }} />
+                      Pan {p.id} · {p.orientation} {p.azimut}° · ~{p.surface_estimee_m2}m² · {p.inclinaison_estimee}°
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2 mt-1">
+                  <Button size="sm" className="flex-1 text-xs"
+                    onClick={() => { validateAIRef.current?.current?.(); }}>
+                    ✓ Créer les pans
+                  </Button>
+                  <Button size="sm" variant="outline" className="flex-1 text-xs"
+                    onClick={() => setAiDetectedPans(null)}>
+                    Ignorer
+                  </Button>
+                </div>
+              </>
+            )}
+            <button className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground self-end" onClick={() => setAiDetectedPans(null)}>✕</button>
           </div>
         )}
 
