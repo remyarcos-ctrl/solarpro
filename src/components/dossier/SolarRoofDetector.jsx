@@ -207,7 +207,7 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
           {result.obstacles?.length > 0 && (
             <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg px-3 py-2">
               <div className="text-xs font-semibold text-amber-400 mb-1">⚠️ Obstacles détectés</div>
-              {result.obstacles.map((o, i) => <div key={i} className="text-xs text-muted-foreground">• {o}</div>)}
+              {result.obstacles.map((o, i) => <div key={i} className="text-xs text-muted-foreground">• {typeof o === 'string' ? o : o.type || o.commentaire || JSON.stringify(o)}</div>)}
             </div>
           )}
 
