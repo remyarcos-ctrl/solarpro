@@ -48,6 +48,7 @@ export default async function handler(req, res) {
     const data = await upstream.json();
     return res.status(upstream.status).json(data);
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    console.error('[roof-vision]', e.message, e.stack);
+    return res.status(500).json({ error: e.message, stack: e.stack?.split('\n')[0] });
   }
 }

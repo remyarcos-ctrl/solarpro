@@ -26,7 +26,10 @@ Réponds UNIQUEMENT avec un JSON valide (sans markdown) :
     body: JSON.stringify({ lat: coords.lat, lon: coords.lon, prompt }),
   });
 
-  if (!r.ok) throw new Error(`roof-vision HTTP ${r.status}`);
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error(`roof-vision HTTP ${r.status}: ${body.error || 'unknown'}`);
+  }
   const data = await r.json();
   const text = data.content?.[0]?.text || '';
   const match = text.match(/\{[\s\S]*\}/);
@@ -60,8 +63,8 @@ const handleDetect = async () => {
       setResult({ ...analysis, exploitablePans });
       setStep("done");
     } catch (e) {
-      console.error("Full error:", JSON.stringify(e, null, 2));
-      setError("Erreur : " + JSON.stringify(e?.message || e?.error || e, null, 2));
+      console.error("Full error:", e?.message || e);
+      setError("Erreur : " + (e?.message || String(e)));
       setStep("error");
     } finally {
       setLoading(false);
