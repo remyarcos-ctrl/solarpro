@@ -1,41 +1,15 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Sparkles, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { azimutToOrientation } from "./roofUtils";
-function anthropicUrl() {
+function visionEndpoint() {
   return window.location.hostname === 'localhost'
-    ? '/anthropic/v1/messages'
-    : '/api/anthropic';
+    ? '/api/roof-vision'   // Vercel dev ou vite proxy
+    : '/api/roof-vision';
 }
 
-function buildStaticMapUrl(coords, zoom = 19) {
-  const token = import.meta.env.VITE_MAPBOX_TOKEN;
-  const { lon, lat } = coords;
-  return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lon},${lat},${zoom},0/800x600?access_token=${token}`;
-}
-
-async function analyzeRoofWithVision(imageUrl, coords) {
-  const locationHint = coords
-    ? `La maison est à lat=${coords.lat.toFixed(4)}, lon=${coords.lon.toFixed(4)} (France).`
-    : "La maison est en France.";
-
-  const isDev = window.location.hostname === 'localhost';
-  const headers = {
-    'Content-Type': 'application/json',
-    'anthropic-version': '2023-06-01',
-    ...(isDev && { 'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY }),
-  };
-
-  const r = await fetch(anthropicUrl(), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'url', url: imageUrl } },
-          { type: 'text', text: `Tu vois une photo aérienne satellite HD d'un toit en France. ${locationHint}
+async function analyzeRoofWithVision(coords) {
+  const locationHint = `La maison est à lat=${coords.lat.toFixed(4)}, lon=${coords.lon.toFixed(4)} (France).`;
+  const prompt = `Tu vois une photo aérienne satellite HD d'un toit en France. ${locationHint}
 Identifie chaque pan de toiture visible (surfaces rouge/tuile/ardoise/zinc sur le bâtiment central).
 Pour chaque pan, donne :
 - azimut : direction en degrés (0=Nord, 90=Est, 180=Sud, 270=Ouest) — déduit de la forme et de l'ombre portée
@@ -44,13 +18,15 @@ Pour chaque pan, donne :
 NE PAS estimer l'inclinaison (impossible depuis vue aérienne 2D — laisse inclination à 30 par défaut).
 
 Réponds UNIQUEMENT avec un JSON valide (sans markdown) :
-{"pans":[{"id":1,"label":"Pan Sud","azimut":180,"inclination":30,"rendement_estime":95,"exploitable":true,"commentaire":"...","polygon_pct":[{"x":0.3,"y":0.4},{"x":0.5,"y":0.4},{"x":0.5,"y":0.6},{"x":0.3,"y":0.6}]}],"obstacles":[],"surface_totale_estimee_m2":60,"recommandation_generale":"...","confiance":85}` },
-        ],
-      }],
-    }),
+{"pans":[{"id":1,"label":"Pan Sud","azimut":180,"inclination":30,"rendement_estime":95,"exploitable":true,"commentaire":"...","polygon_pct":[{"x":0.3,"y":0.4},{"x":0.5,"y":0.4},{"x":0.5,"y":0.6},{"x":0.3,"y":0.6}]}],"obstacles":[],"surface_totale_estimee_m2":60,"recommandation_generale":"...","confiance":85}`;
+
+  const r = await fetch(visionEndpoint(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lat: coords.lat, lon: coords.lon, prompt }),
   });
 
-  if (!r.ok) throw new Error(`Anthropic HTTP ${r.status}`);
+  if (!r.ok) throw new Error(`roof-vision HTTP ${r.status}`);
   const data = await r.json();
   const text = data.content?.[0]?.text || '';
   const match = text.match(/\{[\s\S]*\}/);
@@ -78,8 +54,7 @@ const handleDetect = async () => {
     setResult(null);
 
     try {
-      const imageUrl = buildStaticMapUrl(coords);
-      const analysis = await analyzeRoofWithVision(imageUrl, coords);
+      const analysis = await analyzeRoofWithVision(coords);
 
       const exploitablePans = (analysis.pans || []).filter(p => p.exploitable);
       setResult({ ...analysis, exploitablePans });
