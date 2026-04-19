@@ -1,0 +1,93 @@
+{
+  "name": "Client",
+  "type": "object",
+  "properties": {
+    "first_name": {
+      "type": "string",
+      "description": "Pr\u00e9nom du client"
+    },
+    "last_name": {
+      "type": "string",
+      "description": "Nom du client"
+    },
+    "phone": {
+      "type": "string",
+      "description": "T\u00e9l\u00e9phone"
+    },
+    "email": {
+      "type": "string",
+      "description": "Email"
+    },
+    "address": {
+      "type": "string",
+      "description": "Adresse compl\u00e8te"
+    },
+    "property_type": {
+      "type": "string",
+      "enum": [
+        "maison",
+        "immeuble",
+        "batiment_commercial",
+        "hangar"
+      ],
+      "description": "Type de bien"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "prospect",
+        "visite_planifiee",
+        "etude_envoyee",
+        "signe",
+        "installe",
+        "annule"
+      ],
+      "default": "prospect",
+      "description": "Statut du dossier"
+    },
+    "comment": {
+      "type": "string",
+      "description": "Commentaire"
+    },
+    "panel_model_id": {
+      "type": "string",
+      "description": "ID du mod\u00e8le de panneau choisi"
+    },
+    "panel_count": {
+      "type": "number",
+      "description": "Nombre de panneaux choisis"
+    },
+    "max_panels": {
+      "type": "number",
+      "description": "Nombre max de panneaux estim\u00e9"
+    },
+    "roof_width": {
+      "type": "number",
+      "description": "Largeur toiture (m)"
+    },
+    "roof_height": {
+      "type": "number",
+      "description": "Hauteur toiture (m)"
+    },
+    "total_power_kwc": {
+      "type": "number",
+      "description": "Puissance totale en kWc"
+    },
+    "installation_cost": {
+      "type": "number",
+      "description": "Co\u00fbt total installation"
+    },
+    "annual_savings": {
+      "type": "number",
+      "description": "\u00c9conomies annuelles"
+    },
+    "roi_years": {
+      "type": "number",
+      "description": "Retour sur investissement (ann\u00e9es)"
+    }
+  },
+  "required": [
+    "first_name",
+    "last_name"
+  ]
+}

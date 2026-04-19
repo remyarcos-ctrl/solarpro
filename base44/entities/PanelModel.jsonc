@@ -1,0 +1,43 @@
+{
+  "name": "PanelModel",
+  "type": "object",
+  "properties": {
+    "brand": {
+      "type": "string",
+      "description": "Marque du panneau"
+    },
+    "model_name": {
+      "type": "string",
+      "description": "Nom du mod\u00e8le"
+    },
+    "power_wc": {
+      "type": "number",
+      "description": "Puissance en Wc"
+    },
+    "width_mm": {
+      "type": "number",
+      "description": "Largeur en mm"
+    },
+    "height_mm": {
+      "type": "number",
+      "description": "Hauteur en mm"
+    },
+    "price": {
+      "type": "number",
+      "description": "Prix unitaire \u20ac"
+    },
+    "efficiency": {
+      "type": "number",
+      "description": "Rendement %"
+    },
+    "is_default": {
+      "type": "boolean",
+      "description": "Mod\u00e8le par d\u00e9faut"
+    }
+  },
+  "required": [
+    "brand",
+    "model_name",
+    "power_wc"
+  ]
+}

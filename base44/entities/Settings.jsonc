@@ -1,0 +1,69 @@
+{
+  "name": "Settings",
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "Cl\u00e9 du param\u00e8tre (unique)"
+    },
+    "electricity_price": {
+      "type": "number",
+      "description": "Prix \u00e9lectricit\u00e9 \u20ac/kWh"
+    },
+    "buyback_rate": {
+      "type": "number",
+      "description": "Tarif rachat \u20ac/kWh"
+    },
+    "regional_production": {
+      "type": "number",
+      "description": "Production kWh/kWc/an"
+    },
+    "self_consumption_rate": {
+      "type": "number",
+      "description": "Taux autoconsommation %"
+    },
+    "inflation_rate": {
+      "type": "number",
+      "description": "Taux inflation %/an"
+    },
+    "degradation_rate": {
+      "type": "number",
+      "description": "Taux d\u00e9gradation panneaux %/an"
+    },
+    "prime_per_kwc": {
+      "type": "number",
+      "description": "Prime autoconsommation \u20ac/kWc"
+    },
+    "installation_cost_per_wc": {
+      "type": "number",
+      "description": "Co\u00fbt pose \u20ac/Wc"
+    },
+    "company_name": {
+      "type": "string",
+      "description": "Nom de l'entreprise"
+    },
+    "company_address": {
+      "type": "string",
+      "description": "Adresse entreprise"
+    },
+    "company_phone": {
+      "type": "string",
+      "description": "T\u00e9l\u00e9phone entreprise"
+    },
+    "company_email": {
+      "type": "string",
+      "description": "Email entreprise"
+    },
+    "company_siret": {
+      "type": "string",
+      "description": "SIRET"
+    },
+    "company_logo_url": {
+      "type": "string",
+      "description": "URL logo entreprise"
+    }
+  },
+  "required": [
+    "key"
+  ]
+}
