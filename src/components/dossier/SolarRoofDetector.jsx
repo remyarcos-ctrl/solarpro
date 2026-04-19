@@ -1,66 +1,56 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Sparkles, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { azimutToOrientation } from "./roofUtils";
-import { base44 } from "@/api/base44Client";
+function anthropicUrl() {
+  return window.location.hostname === 'localhost'
+    ? '/anthropic/v1/messages'
+    : '/api/anthropic';
+}
 
 async function analyzeRoofWithVision(imageBase64, coords) {
   const locationHint = coords
     ? `La maison est à lat=${coords.lat.toFixed(4)}, lon=${coords.lon.toFixed(4)} (France).`
     : "La maison est en France.";
 
-  // Convertir data URL en Blob puis uploader
   const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-  const byteArray = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-  const blob = new Blob([byteArray], { type: "image/png" });
-  const file = new File([blob], "satellite.png", { type: "image/png" });
+  const isDev = window.location.hostname === 'localhost';
+  const headers = {
+    'Content-Type': 'application/json',
+    'anthropic-version': '2023-06-01',
+    ...(isDev && { 'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY }),
+  };
 
-  // Uploader via Base44
-  const uploadedFile = await base44.integrations.Core.UploadFile({ file });
-  const fileUrl = uploadedFile.file_url || uploadedFile.url;
-
-  const result = await base44.integrations.Core.InvokeLLM({
-    prompt: `Tu es un expert solaire. Analyse cette image satellite et détecte les pans de toiture.
+  const r = await fetch(anthropicUrl(), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model: 'claude-opus-4-5',
+      max_tokens: 2048,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64Data } },
+          { type: 'text', text: `Tu es un expert solaire. Analyse cette image satellite et détecte les pans de toiture.
 ${locationHint}
 L'image est une vue satellite VERTICALE (vue du dessus, 0° d'inclinaison).
 Trace des polygones PRÉCIS qui suivent exactement les bords du toit.
 Un toit standard occupe 5 à 25% de la surface de l'image.
 Ne couvre PAS le jardin, la rue ou les zones non-toiture.
-Pour chaque pan : coordonnées en % de l'image (0-1), azimut, inclinaison, si exploitable.`,
-    file_urls: [fileUrl],
-    response_json_schema: {
-      type: "object",
-      properties: {
-        pans: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id:               { type: "number" },
-              label:            { type: "string" },
-              azimut:           { type: "number" },
-              inclination:      { type: "number" },
-              rendement_estime: { type: "number" },
-              exploitable:      { type: "boolean" },
-              commentaire:      { type: "string" },
-              polygon_pct: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: { x: { type: "number" }, y: { type: "number" } }
-                }
-              }
-            }
-          }
-        },
-        obstacles:                  { type: "array", items: { type: "string" } },
-        surface_totale_estimee_m2:  { type: "number" },
-        recommandation_generale:    { type: "string" },
-        confiance:                  { type: "number" }
-      }
-    }
+Pour chaque pan : coordonnées en % de l'image (0-1), azimut, inclinaison, si exploitable.
+
+Réponds UNIQUEMENT avec un JSON valide (sans markdown) :
+{"pans":[{"id":1,"label":"Pan Sud","azimut":180,"inclination":30,"rendement_estime":95,"exploitable":true,"commentaire":"...","polygon_pct":[{"x":0.3,"y":0.4},...]}],"obstacles":[],"surface_totale_estimee_m2":60,"recommandation_generale":"...","confiance":85}` },
+        ],
+      }],
+    }),
   });
 
-  return result;
+  if (!r.ok) throw new Error(`Anthropic HTTP ${r.status}`);
+  const data = await r.json();
+  const text = data.content?.[0]?.text || '';
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Réponse JSON introuvable');
+  return JSON.parse(match[0]);
 }
 
 function pctToGPS(polygonPct, centerCoords, imageSizeMeters = 150) {
