@@ -51,17 +51,15 @@ Réponds UNIQUEMENT avec un JSON valide (sans markdown) :
   return JSON.parse(match[0]);
 }
 
-function pctToGPS(polygonPct, centerCoords, imageSizeMeters = 150) {
-  if (!centerCoords || !polygonPct?.length) return null;
-  const { lat, lon } = centerCoords;
-  const mPerDegLat = 111320;
-  const mPerDegLon = 111320 * Math.cos(lat * Math.PI / 180);
-  const gpsPoints = polygonPct.map(({ x, y }) => [
-    lon + ((x - 0.5) * imageSizeMeters) / mPerDegLon,
-    lat + ((0.5 - y) * imageSizeMeters) / mPerDegLat,
+function pctToGPS(polygonPct, bounds) {
+  if (!bounds || !polygonPct?.length) return null;
+  const { west, east, north, south } = bounds;
+  const ring = polygonPct.map(({ x, y }) => [
+    west + x * (east - west),
+    north - y * (north - south),
   ]);
-  gpsPoints.push(gpsPoints[0]);
-  return [gpsPoints];
+  ring.push(ring[0]);
+  return [ring];
 }
 
 export default function SolarRoofDetector({ capturedImage, coords, onDetected, onRequestCapture }) {
@@ -92,23 +90,29 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
     try {
       const analysis = await analyzeRoofWithVision(imageToUse, coords);
 
-      const pansWithGPS = (analysis.pans || [])
-        .filter(p => p.exploitable && p.polygon_pct?.length >= 3)
-        .map((pan, idx) => ({
-          id: `ai-pan-${Date.now()}-${idx}`,
-          drawId: null,
-          coords: pctToGPS(pan.polygon_pct, coords),
-          area: 0,
-          maxPanels: 0,
-          orientation: azimutToOrientation(pan.azimut),
-          azimut: pan.azimut,
-          inclination: pan.inclination || 30,
-          index: idx,
-          label: pan.label,
-          commentaire: pan.commentaire,
-          rendement: pan.rendement_estime,
-          fromAI: true,
-        }));
+      const bounds = window.__smActions?.getBounds?.();
+      const exploitablePans = (analysis.pans || [])
+        .filter(p => p.exploitable && p.polygon_pct?.length >= 3);
+
+      // Dessine chaque pan sur la carte via Mapbox Draw
+      for (const pan of exploitablePans) {
+        const polyCoords = pctToGPS(pan.polygon_pct, bounds);
+        if (polyCoords) await window.__smActions?.addAIPan?.(polyCoords, pan);
+      }
+
+      const pansWithGPS = exploitablePans.map((pan, idx) => ({
+        id: `ai-pan-${Date.now()}-${idx}`,
+        drawId: null,
+        coords: pctToGPS(pan.polygon_pct, bounds),
+        area: 0, maxPanels: 0,
+        orientation: azimutToOrientation(pan.azimut),
+        azimut: pan.azimut,
+        inclination: pan.inclination || 30,
+        index: idx, label: pan.label,
+        commentaire: pan.commentaire,
+        rendement: pan.rendement_estime,
+        fromAI: true,
+      }));
 
       setResult({ ...analysis, pansWithGPS });
       setStep("done");

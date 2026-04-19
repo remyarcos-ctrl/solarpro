@@ -879,6 +879,22 @@ function MapController({
       resetView:     (c) => { if (c) mbMap.flyTo({ center: [c.lon, c.lat], zoom: 20, pitch: 45, bearing: 0, duration: 800 }); },
       changePitch:   (p) => mbMap.easeTo({ pitch: p, duration: 500 }),
       changeBearing: (b) => mbMap.easeTo({ bearing: b, duration: 400 }),
+      getBounds: () => {
+        const b = mbMap.getBounds();
+        return { west: b.getWest(), east: b.getEast(), north: b.getNorth(), south: b.getSouth() };
+      },
+      addAIPan: async (polyCoords, aiData) => {
+        const ids = drawRef.current?.add({
+          type: 'Feature', geometry: { type: 'Polygon', coordinates: polyCoords }, properties: {}
+        });
+        const drawId = ids?.[0];
+        const forcedSeg = {
+          pitchDegrees: aiData.inclination || 30,
+          azimuthDegrees: aiData.azimut || 180,
+          stats: { areaMeters2: aiData.surface_estimee_m2 || null },
+        };
+        await createPanFromCoordsRef.current(polyCoords, drawId, forcedSeg, null);
+      },
       prepareCapture: () => new Promise(resolve => {
         const c = window.__smCoords;
         mbMap.flyTo({ center: c ? [c.lon, c.lat] : mbMap.getCenter(), zoom: 20, pitch: 0, bearing: 0, duration: 1500 });
