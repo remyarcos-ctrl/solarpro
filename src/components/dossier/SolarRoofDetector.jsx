@@ -30,11 +30,13 @@ async function analyzeRoofWithVision(imageBase64, coords) {
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64Data } },
-          { type: 'text', text: `Tu vois une photo aérienne IGN d'un toit en France. ${locationHint}
-Les pans de toit sont les surfaces inclinées de couleur rouge/tuile/ardoise/zinc visibles sur le bâtiment central.
-Identifie CHAQUE pan visible séparément et donne ses coordonnées précises en % de l'image (valeurs entre 0 et 1).
-Vue verticale du dessus — estime l'azimut d'après l'ombre portée et la forme du pan.
-Ne trace PAS le jardin, la rue, les véhicules ou les zones non-toiture.
+          { type: 'text', text: `Tu vois une photo aérienne d'un toit en France. ${locationHint}
+Identifie chaque pan de toiture visible (surfaces rouge/tuile/ardoise/zinc sur le bâtiment central).
+Pour chaque pan, donne :
+- azimut : direction en degrés (0=Nord, 90=Est, 180=Sud, 270=Ouest) — déduit de la forme et de l'ombre
+- surface_estimee_m2 : surface approximative visible
+- exploitable : true si orienté Sud/SE/SO et sans obstacle majeur
+NE PAS estimer l'inclinaison (impossible depuis vue aérienne 2D — laisse inclination à 30 par défaut).
 
 Réponds UNIQUEMENT avec un JSON valide (sans markdown) :
 {"pans":[{"id":1,"label":"Pan Sud","azimut":180,"inclination":30,"rendement_estime":95,"exploitable":true,"commentaire":"...","polygon_pct":[{"x":0.3,"y":0.4},{"x":0.5,"y":0.4},{"x":0.5,"y":0.6},{"x":0.3,"y":0.6}]}],"obstacles":[],"surface_totale_estimee_m2":60,"recommandation_generale":"...","confiance":85}` },
@@ -192,7 +194,7 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
                   : "bg-red-500/15 text-red-400"
                 }`}>{pan.rendement_estime}% rendement</span>
               </div>
-              <div className="text-muted-foreground">Azimut {pan.azimut}° · Inclinaison {pan.inclination}°</div>
+              <div className="text-muted-foreground">Azimut {pan.azimut}° · Inclinaison via Solar API</div>
               {pan.commentaire && <div className="text-muted-foreground/70 mt-0.5 italic">{pan.commentaire}</div>}
               <button
                 onClick={() => {

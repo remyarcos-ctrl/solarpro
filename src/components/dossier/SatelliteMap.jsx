@@ -351,10 +351,24 @@ function MapController({
     let azimut      = detected.azimut;
     let solarShadingFactor = null;
 
-    // Utilise le hint IA (orientation/inclinaison détectées) si pas de forcedSeg
+    // Hint IA : azimut Vision → cherche le segment Solar API le plus proche pour le pitch réel
     if (!forcedSeg && window.__smAIHint) {
-      forcedSeg = { pitchDegrees: window.__smAIHint.inclination, azimuthDegrees: window.__smAIHint.azimut, stats: {} };
+      const hint = window.__smAIHint;
       window.__smAIHint = null;
+      const solarSegsLocal = solarDataRef.current?.solarPotential?.roofSegmentStats;
+      if (solarSegsLocal?.length > 0) {
+        const valid = solarSegsLocal.filter(s => (s.stats?.areaMeters2 ?? 0) > 3 && s.pitchDegrees < 70);
+        const segs = valid.length > 0 ? valid : solarSegsLocal;
+        forcedSeg = segs.reduce((a, b) => {
+          const da = Math.abs(((a.azimuthDegrees - hint.azimut + 540) % 360) - 180);
+          const db = Math.abs(((b.azimuthDegrees - hint.azimut + 540) % 360) - 180);
+          return db < da ? b : a;
+        });
+      } else {
+        // Pas de Solar API — azimut Vision + BDTOPO pitch ou 20° par défaut
+        const bdtopoPitch = solarDataRef.current?.__bdtopo?.pitch ?? 20;
+        forcedSeg = { pitchDegrees: bdtopoPitch, azimuthDegrees: hint.azimut, stats: {} };
+      }
     }
     let bestSolarSeg = forcedSeg || null;
     if (!forcedSeg) {
