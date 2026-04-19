@@ -3,19 +3,20 @@ import { Button } from "@/components/ui/button";
 import { Sparkles, Loader2, ChevronDown, ChevronUp, Mic, MicOff, Mail, X } from "lucide-react";
 import { getSolarCoefficient, ORIENTATIONS } from "./roofUtils";
 async function callAnthropic(prompt) {
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
+  const isDev = window.location.hostname === 'localhost';
+  const url = isDev ? '/anthropic/v1/messages' : '/api/anthropic';
+  const headers = {
+    'Content-Type': 'application/json',
+    'anthropic-version': '2023-06-01',
+    ...(isDev && { 'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY }),
+  };
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: 'claude-sonnet-4-6',
       max_tokens: 1500,
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: 'user', content: prompt }],
     }),
   });
   const data = await response.json();

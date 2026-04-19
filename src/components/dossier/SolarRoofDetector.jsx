@@ -24,7 +24,7 @@ async function analyzeRoofWithVision(imageBase64, coords) {
     method: 'POST',
     headers,
     body: JSON.stringify({
-      model: 'claude-opus-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2048,
       messages: [{
         role: 'user',
