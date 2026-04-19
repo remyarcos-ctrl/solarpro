@@ -116,6 +116,8 @@ export default function SolarRoofDetector({ capturedImage, coords }) {
     setStep("analyzing");
     setResult(null);
     setMode(null);
+    // Efface les pans IA précédents avant nouvelle détection
+    window.__smActions?.clearAllPans?.();
 
     try {
       // ── Mode Solar Mask + Vision ──────────────────────────────────────
@@ -310,9 +312,17 @@ export default function SolarRoofDetector({ capturedImage, coords }) {
             </div>
           )}
 
-          <button onClick={reset} className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2">
-            Recommencer la détection
-          </button>
+          <div className="flex gap-3">
+            <button onClick={reset} className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2">
+              Recommencer
+            </button>
+            <button
+              onClick={() => { window.__smActions?.clearAllPans?.(); reset(); }}
+              className="text-xs text-red-400 hover:text-red-300 underline underline-offset-2"
+            >
+              Effacer les pans
+            </button>
+          </div>
         </div>
       )}
     </div>

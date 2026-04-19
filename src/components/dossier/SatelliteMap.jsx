@@ -327,6 +327,7 @@ function MapController({
   const initializedRef = useRef(false);
   const pansRef = useRef([]);
   const geocodeTimerRef = useRef(null);
+  const updateDebounceRef = useRef(null);
   useEffect(() => { pansRef.current = pans; }, [pans]);
 
   // Toujours à jour grâce à la ré-affectation à chaque rendu (pattern ref-callback)
@@ -785,7 +786,10 @@ function MapController({
     window.__smPans = currentPans;
   }, [map, panel, orientation, onRoofDimensionsChange, onMaxPanelsChange, onRoofAreaChange]);
 
-  useEffect(() => { updatePanelsOnMap(); }, [pans, panel, orientation]);
+  useEffect(() => {
+    if (updateDebounceRef.current) clearTimeout(updateDebounceRef.current);
+    updateDebounceRef.current = setTimeout(() => updatePanelsOnMap(), 80);
+  }, [pans, panel, orientation]);
   useEffect(() => { if (drawRef.current) drawRef.current.options.styles = makeDrawStyles(currentPanIndex); }, [currentPanIndex]);
 
   useEffect(() => {
@@ -901,6 +905,14 @@ function MapController({
       getBounds: () => {
         const b = mbMap.getBounds();
         return { west: b.getWest(), east: b.getEast(), north: b.getNorth(), south: b.getSouth() };
+      },
+      clearAllPans: () => {
+        drawRef.current?.deleteAll();
+        setPans([]);
+        mbMap.getSource('panels-multi')?.setData({ type: 'FeatureCollection', features: [] });
+        mbMap.getSource('obstacles-layer')?.setData({ type: 'FeatureCollection', features: [] });
+        mbMap.getSource('ai-pans-detected')?.setData({ type: 'FeatureCollection', features: [] });
+        window.__smAIObstacles = [];
       },
       showObstacles: (obstacles) => {
         const features = (obstacles || []).map(o => ({
