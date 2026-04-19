@@ -1,6 +1,7 @@
 // ── Données par défaut ────────────────────────────────────────────────────
 export const DEFAULT_SETTINGS = {
-  electricity_price:        0.2516,
+  electricity_price:            0.2516,
+  electricity_price_updated_at: '2025-02-01',
   buyback_rate:             0.1302,
   regional_production:      1100,
   self_consumption_rate:    70,

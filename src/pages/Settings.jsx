@@ -82,9 +82,22 @@ export default function Settings() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Tarification */}
         <SettingsSection icon={Zap} title="Tarification énergie">
+          {(() => {
+            const updated = form.electricity_price_updated_at;
+            const monthsOld = updated
+              ? Math.floor((Date.now() - new Date(updated).getTime()) / (1000 * 60 * 60 * 24 * 30))
+              : 99;
+            return monthsOld >= 3 ? (
+              <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
+                <span>⚠️</span>
+                <span>Tarif EDF non mis à jour depuis <strong>{monthsOld} mois</strong> — vérifiez le tarif actuel sur <strong>edf.fr</strong> et mettez à jour ci-dessous.</span>
+              </div>
+            ) : null;
+          })()}
           <div className="grid grid-cols-2 gap-4">
-            <SettingsField label="Prix électricité" value={form.electricity_price} onChange={v => update("electricity_price", v)} type="number" suffix="€/kWh" step="0.01" />
-            <SettingsField label="Tarif rachat" value={form.buyback_rate} onChange={v => update("buyback_rate", v)} type="number" suffix="€/kWh" step="0.01" />
+            <SettingsField label="Prix électricité" value={form.electricity_price} onChange={v => update("electricity_price", v)} type="number" suffix="€/kWh" step="0.001" />
+            <SettingsField label="Date mise à jour tarif" value={form.electricity_price_updated_at} onChange={v => update("electricity_price_updated_at", v)} type="date" />
+            <SettingsField label="Tarif rachat" value={form.buyback_rate} onChange={v => update("buyback_rate", v)} type="number" suffix="€/kWh" step="0.001" />
             <SettingsField label="Production régionale" value={form.regional_production} onChange={v => update("regional_production", v)} type="number" suffix="kWh/kWc/an" />
             <SettingsField label="Autoconsommation" value={form.self_consumption_rate} onChange={v => update("self_consumption_rate", v)} type="number" suffix="%" />
           </div>
