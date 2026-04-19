@@ -33,21 +33,21 @@ Réponds UNIQUEMENT avec le JSON, sans texte autour.`;
 
 function apiUrl() {
   if (window.location.hostname === 'localhost') return '/anthropic/v1/messages';
-  return null;
+  return '/api/anthropic'; // Vercel serverless function en production
 }
 
 export async function detectRoofPans(imageBase64) {
   const url = apiUrl();
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-  if (!url || !apiKey) return [];
+  const isDev = window.location.hostname === 'localhost';
+  const apiKey = isDev ? import.meta.env.VITE_ANTHROPIC_API_KEY : 'server';
+  if (!url || (isDev && !apiKey)) return [];
+
+  const headers = { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' };
+  if (isDev && apiKey) headers['x-api-key'] = apiKey;
 
   const resp = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
+    headers,
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,

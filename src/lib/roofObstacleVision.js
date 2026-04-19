@@ -28,25 +28,24 @@ Réponds UNIQUEMENT avec le JSON, sans texte autour.`;
 
 function apiUrl() {
   if (window.location.hostname === 'localhost') return '/anthropic/v1/messages';
-  // En production, un backend est requis — on retourne null pour désactiver
-  return null;
+  return '/api/anthropic'; // Vercel serverless function en production
 }
 
 export async function analyzeRoofObstacles(imageBase64, panBbox) {
   const url = apiUrl();
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-  if (!url || !apiKey) {
-    console.warn('[Vision] VITE_ANTHROPIC_API_KEY manquant ou hors dev');
+  const isDev = window.location.hostname === 'localhost';
+  const apiKey = isDev ? import.meta.env.VITE_ANTHROPIC_API_KEY : 'server';
+  if (!url || (isDev && !apiKey)) {
+    console.warn('[Vision] VITE_ANTHROPIC_API_KEY manquant');
     return [];
   }
 
+  const headers = { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' };
+  if (isDev && apiKey) headers['x-api-key'] = apiKey;
+
   const resp = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
+    headers,
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
       max_tokens: 512,
