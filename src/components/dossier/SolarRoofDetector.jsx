@@ -31,16 +31,14 @@ async function analyzeRoofWithVision(imageBase64, coords) {
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64Data } },
-          { type: 'text', text: `Tu es un expert solaire. Analyse cette image satellite et détecte les pans de toiture.
-${locationHint}
-L'image est une vue satellite VERTICALE (vue du dessus, 0° d'inclinaison).
-Trace des polygones PRÉCIS qui suivent exactement les bords du toit.
-Un toit standard occupe 5 à 25% de la surface de l'image.
-Ne couvre PAS le jardin, la rue ou les zones non-toiture.
-Pour chaque pan : coordonnées en % de l'image (0-1), azimut, inclinaison, si exploitable.
+          { type: 'text', text: `Tu vois une photo aérienne IGN d'un toit en France. ${locationHint}
+Les pans de toit sont les surfaces inclinées de couleur rouge/tuile/ardoise/zinc visibles sur le bâtiment central.
+Identifie CHAQUE pan visible séparément et donne ses coordonnées précises en % de l'image (valeurs entre 0 et 1).
+Vue verticale du dessus — estime l'azimut d'après l'ombre portée et la forme du pan.
+Ne trace PAS le jardin, la rue, les véhicules ou les zones non-toiture.
 
 Réponds UNIQUEMENT avec un JSON valide (sans markdown) :
-{"pans":[{"id":1,"label":"Pan Sud","azimut":180,"inclination":30,"rendement_estime":95,"exploitable":true,"commentaire":"...","polygon_pct":[{"x":0.3,"y":0.4},...]}],"obstacles":[],"surface_totale_estimee_m2":60,"recommandation_generale":"...","confiance":85}` },
+{"pans":[{"id":1,"label":"Pan Sud","azimut":180,"inclination":30,"rendement_estime":95,"exploitable":true,"commentaire":"...","polygon_pct":[{"x":0.3,"y":0.4},{"x":0.5,"y":0.4},{"x":0.5,"y":0.6},{"x":0.3,"y":0.6}]}],"obstacles":[],"surface_totale_estimee_m2":60,"recommandation_generale":"...","confiance":85}` },
         ],
       }],
     }),
@@ -79,22 +77,21 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
   const handleDetect = async () => {
     setError(null);
 
-    // 1. Remettre la carte à plat (0° pitch, 0° bearing) pour meilleure détection
-    if (window.__smActions?.changePitch) {
-      window.__smActions.changePitch(0);
-      window.__smActions.changeBearing(0);
-      // Attendre que la carte finisse d'animer
-      await new Promise(r => setTimeout(r, 1000));
+    // 1. Zoom max, pitch 0, bearing 0 — attend que la carte soit idle
+    if (window.__smActions?.prepareCapture) {
+      await window.__smActions.prepareCapture();
+    } else {
+      await new Promise(r => setTimeout(r, 2000));
     }
 
-    // 2. Capturer via html2canvas (WebGL canvas serait vide avec getCanvas())
+    // 2. Capturer via html2canvas (scale:2 pour double résolution)
     const mapDiv = document.getElementById('satelliteMap');
     if (!mapDiv) {
       setError("Carte non disponible — attendez que la carte soit chargée.");
       setStep("error");
       return;
     }
-    const capturedCanvas = await html2canvas(mapDiv, { useCORS: true, allowTaint: true, logging: false });
+    const capturedCanvas = await html2canvas(mapDiv, { scale: 2, useCORS: true, allowTaint: true, logging: false });
     const imageToUse = capturedCanvas.toDataURL('image/png');
 
     // 3. Analyser

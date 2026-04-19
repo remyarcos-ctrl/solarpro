@@ -879,6 +879,12 @@ function MapController({
       resetView:     (c) => { if (c) mbMap.flyTo({ center: [c.lon, c.lat], zoom: 20, pitch: 45, bearing: 0, duration: 800 }); },
       changePitch:   (p) => mbMap.easeTo({ pitch: p, duration: 500 }),
       changeBearing: (b) => mbMap.easeTo({ bearing: b, duration: 400 }),
+      prepareCapture: () => new Promise(resolve => {
+        const c = window.__smCoords;
+        mbMap.flyTo({ center: c ? [c.lon, c.lat] : mbMap.getCenter(), zoom: 20, pitch: 0, bearing: 0, duration: 1500 });
+        const timeout = setTimeout(resolve, 5000);
+        mbMap.once('idle', () => { clearTimeout(timeout); setTimeout(resolve, 300); });
+      }),
       capture: () => {
         try { onCaptureReady?.(mbMap.getCanvas().toDataURL("image/png")); }
         catch(e) { console.error("Capture:", e); }
