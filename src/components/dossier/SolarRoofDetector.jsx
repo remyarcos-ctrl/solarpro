@@ -86,13 +86,11 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
       await new Promise(r => setTimeout(r, 1000));
     }
 
-    // 2. Capturer automatiquement
-    window.__smActions?.capture?.();
-    await new Promise(r => setTimeout(r, 500));
-
-    let imageToUse = imageRef.current;
+    // 2. Capturer directement depuis le canvas Mapbox (évite le cycle props/state)
+    const canvas = document.querySelector('.mapboxgl-canvas');
+    let imageToUse = canvas ? canvas.toDataURL('image/png') : imageRef.current;
     if (!imageToUse) {
-      setError("Capture échouée. Réessayez.");
+      setError("Carte non disponible — attendez que la carte soit chargée.");
       setStep("error");
       return;
     }
