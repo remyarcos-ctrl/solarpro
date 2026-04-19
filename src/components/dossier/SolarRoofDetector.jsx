@@ -7,18 +7,32 @@ function visionEndpoint() {
     : '/api/roof-vision';
 }
 
-async function analyzeRoofWithVision(coords) {
-  const locationHint = `La maison est à lat=${coords.lat.toFixed(4)}, lon=${coords.lon.toFixed(4)} (France).`;
-  const prompt = `Tu vois une photo aérienne satellite HD d'un toit en France. ${locationHint}
-Identifie chaque pan de toiture visible (surfaces rouge/tuile/ardoise/zinc sur le bâtiment central).
-Pour chaque pan, donne :
-- azimut : direction en degrés (0=Nord, 90=Est, 180=Sud, 270=Ouest) — déduit de la forme et de l'ombre portée
-- surface_estimee_m2 : surface approximative visible
-- exploitable : true si orienté Sud/SE/SO et sans obstacle majeur
-NE PAS estimer l'inclinaison (impossible depuis vue aérienne 2D — laisse inclination à 30 par défaut).
+// Calcule les bounds géographiques d'une image Mapbox Static
+// zoom 19, 800x600px, centrée sur (lat, lon)
+function staticImageBounds(lat, lon, zoom = 19, w = 800, h = 600) {
+  const mPerPx = (40075016.686 * Math.cos(lat * Math.PI / 180)) / (256 * Math.pow(2, zoom));
+  const wDeg = (w * mPerPx) / (111320 * Math.cos(lat * Math.PI / 180));
+  const hDeg = (h * mPerPx) / 110574;
+  return { west: lon - wDeg / 2, east: lon + wDeg / 2, north: lat + hDeg / 2, south: lat - hDeg / 2 };
+}
 
-Réponds UNIQUEMENT avec un JSON valide (sans markdown) :
-{"pans":[{"id":1,"label":"Pan Sud","azimut":180,"inclination":30,"rendement_estime":95,"exploitable":true,"commentaire":"...","polygon_pct":[{"x":0.3,"y":0.4},{"x":0.5,"y":0.4},{"x":0.5,"y":0.6},{"x":0.3,"y":0.6}]}],"obstacles":[],"surface_totale_estimee_m2":60,"recommandation_generale":"...","confiance":85}`;
+function pixelsToGPS(coins, bounds, w = 800, h = 600) {
+  const ring = coins.map(({ x, y }) => [
+    bounds.west + (x / w) * (bounds.east - bounds.west),
+    bounds.north - (y / h) * (bounds.north - bounds.south),
+  ]);
+  ring.push(ring[0]);
+  return [ring];
+}
+
+async function analyzeRoofWithVision(coords) {
+  const prompt = `Tu es un expert en détection de toiture solaire.
+Regarde cette image satellite. L'image fait 800x600 pixels.
+Pour chaque pan de toit visible (tuile rouge, ardoise grise, zinc), donne les coordonnées EXACTES en pixels des coins du polygone.
+Coordonnées : x=colonne, y=ligne depuis le coin haut-gauche.
+
+Retourne UNIQUEMENT ce JSON (sans markdown) :
+{"pans":[{"id":1,"nom":"Pan Sud-Est","azimut":135,"exploitable":true,"coins":[{"x":420,"y":310},{"x":580,"y":290},{"x":600,"y":420},{"x":440,"y":445}]}],"obstacles":[],"recommandation_generale":"...","confiance":85}`;
 
   const r = await fetch(visionEndpoint(), {
     method: 'POST',
@@ -59,7 +73,15 @@ const handleDetect = async () => {
     try {
       const analysis = await analyzeRoofWithVision(coords);
 
-      const exploitablePans = (analysis.pans || []).filter(p => p.exploitable);
+      const bounds = staticImageBounds(coords.lat, coords.lon);
+      const exploitablePans = (analysis.pans || []).filter(p => p.exploitable && p.coins?.length >= 3);
+
+      // Dessine chaque pan sur la carte via Mapbox Draw
+      for (const pan of exploitablePans) {
+        const polyCoords = pixelsToGPS(pan.coins, bounds);
+        if (polyCoords) await window.__smActions?.addAIPan?.(polyCoords, { azimut: pan.azimut, inclination: 30 });
+      }
+
       setResult({ ...analysis, exploitablePans });
       setStep("done");
     } catch (e) {
@@ -136,10 +158,8 @@ const handleDetect = async () => {
 
           {result.exploitablePans?.map((pan, i) => (
             <div key={i} className="flex items-center justify-between text-xs px-3 py-1.5 bg-secondary/30 rounded-lg border border-border">
-              <span className="font-medium text-foreground">{pan.label || `Pan ${i+1}`} · {pan.azimut}°</span>
-              <span className={`font-semibold ${pan.rendement_estime >= 90 ? "text-emerald-400" : pan.rendement_estime >= 70 ? "text-amber-400" : "text-red-400"}`}>
-                {pan.rendement_estime}%
-              </span>
+              <span className="font-medium text-foreground">{pan.nom || pan.label || `Pan ${i+1}`}</span>
+              <span className="text-muted-foreground">Azimut {pan.azimut}°</span>
             </div>
           ))}
 
@@ -148,7 +168,7 @@ const handleDetect = async () => {
               onClick={() => {
                 result.exploitablePans.forEach((pan, i) => {
                   setTimeout(() => {
-                    window.__smAIHint = { inclination: 30, azimut: pan.azimut || 180 };
+                    window.__smAIHint = { inclination: 30, azimut: pan.azimut || pan.azimut || 180 };
                     window.__smActions?.startDraw?.();
                   }, i * 200);
                 });
