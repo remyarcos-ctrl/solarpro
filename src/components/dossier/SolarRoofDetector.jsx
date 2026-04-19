@@ -53,16 +53,6 @@ Réponds UNIQUEMENT avec un JSON valide (sans markdown) :
   return JSON.parse(match[0]);
 }
 
-function pctToGPS(polygonPct, bounds) {
-  if (!bounds || !polygonPct?.length) return null;
-  const { west, east, north, south } = bounds;
-  const ring = polygonPct.map(({ x, y }) => [
-    west + x * (east - west),
-    north - y * (north - south),
-  ]);
-  ring.push(ring[0]);
-  return [ring];
-}
 
 export default function SolarRoofDetector({ capturedImage, coords, onDetected, onRequestCapture }) {
   const [loading, setLoading] = useState(false);
@@ -92,26 +82,9 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
     try {
       const analysis = await analyzeRoofWithVision(imageToUse, coords);
 
-      const exploitablePans = (analysis.pans || [])
-        .filter(p => p.exploitable && p.polygon_pct?.length >= 3);
-
-      const pansWithGPS = exploitablePans.map((pan, idx) => ({
-        id: `ai-pan-${Date.now()}-${idx}`,
-        drawId: null,
-        coords: pctToGPS(pan.polygon_pct, bounds),
-        area: 0, maxPanels: 0,
-        orientation: azimutToOrientation(pan.azimut),
-        azimut: pan.azimut,
-        inclination: pan.inclination || 30,
-        index: idx, label: pan.label,
-        commentaire: pan.commentaire,
-        rendement: pan.rendement_estime,
-        fromAI: true,
-      }));
-
-      setResult({ ...analysis, pansWithGPS });
+      const exploitablePans = (analysis.pans || []).filter(p => p.exploitable);
+      setResult({ ...analysis, exploitablePans });
       setStep("done");
-      if (pansWithGPS.length > 0) onDetected(pansWithGPS, analysis);
     } catch (e) {
       console.error("Full error:", JSON.stringify(e, null, 2));
       setError("Erreur : " + JSON.stringify(e?.message || e?.error || e, null, 2));
@@ -137,7 +110,7 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
       >
         {loading        ? <><Loader2 className="w-4 h-4 animate-spin" /> Claude analyse la toiture…</>
         : step === "capturing" ? <><Loader2 className="w-4 h-4 animate-spin" /> Capture en cours…</>
-        : step === "done"      ? <><CheckCircle className="w-4 h-4" /> {result?.pansWithGPS?.length} pan{result?.pansWithGPS?.length > 1 ? "s" : ""} détecté{result?.pansWithGPS?.length > 1 ? "s" : ""} · Relancer</>
+        : step === "done"      ? <><CheckCircle className="w-4 h-4" /> {result?.exploitablePans?.length} pan{result?.exploitablePans?.length > 1 ? "s" : ""} détecté{result?.exploitablePans?.length > 1 ? "s" : ""} · Relancer</>
         : step === "error"     ? <><AlertCircle className="w-4 h-4" /> Erreur · Réessayer</>
         : <><Sparkles className="w-4 h-4" /> 🤖 Détecter la toiture avec l'IA</>}
       </button>
@@ -184,29 +157,30 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
             </div>
           </div>
 
-          {result.pans?.filter(p => p.exploitable).map((pan, i) => (
-            <div key={i} className="bg-secondary/30 border border-border rounded-lg px-3 py-2 text-xs">
-              <div className="flex items-center justify-between mb-1">
-                <span className="font-semibold text-foreground">{pan.label || `Pan ${i+1}`}</span>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                  pan.rendement_estime >= 90 ? "bg-emerald-500/15 text-emerald-400"
-                  : pan.rendement_estime >= 70 ? "bg-amber-500/15 text-amber-400"
-                  : "bg-red-500/15 text-red-400"
-                }`}>{pan.rendement_estime}% rendement</span>
-              </div>
-              <div className="text-muted-foreground">Azimut {pan.azimut}° · Inclinaison via Solar API</div>
-              {pan.commentaire && <div className="text-muted-foreground/70 mt-0.5 italic">{pan.commentaire}</div>}
-              <button
-                onClick={() => {
-                  window.__smAIHint = { inclination: pan.inclination || 30, azimut: pan.azimut || 180 };
-                  window.__smActions?.startDraw?.();
-                }}
-                className="mt-2 w-full text-xs py-1 px-2 rounded bg-violet-500/15 border border-violet-500/30 text-violet-400 hover:bg-violet-500/25 transition-colors"
-              >
-                ✏️ Tracer ce pan ({pan.label || `Pan ${i+1}`})
-              </button>
+          {result.exploitablePans?.map((pan, i) => (
+            <div key={i} className="flex items-center justify-between text-xs px-3 py-1.5 bg-secondary/30 rounded-lg border border-border">
+              <span className="font-medium text-foreground">{pan.label || `Pan ${i+1}`} · {pan.azimut}°</span>
+              <span className={`font-semibold ${pan.rendement_estime >= 90 ? "text-emerald-400" : pan.rendement_estime >= 70 ? "text-amber-400" : "text-red-400"}`}>
+                {pan.rendement_estime}%
+              </span>
             </div>
           ))}
+
+          {result.exploitablePans?.length > 0 && (
+            <button
+              onClick={() => {
+                result.exploitablePans.forEach((pan, i) => {
+                  setTimeout(() => {
+                    window.__smAIHint = { inclination: 30, azimut: pan.azimut || 180 };
+                    window.__smActions?.startDraw?.();
+                  }, i * 200);
+                });
+              }}
+              className="w-full py-2 px-3 rounded-xl text-sm font-semibold bg-violet-500/15 border border-violet-500/30 text-violet-400 hover:bg-violet-500/25 transition-colors"
+            >
+              ✏️ Créer ces {result.exploitablePans.length} pan{result.exploitablePans.length > 1 ? 's' : ''} (tracé guidé)
+            </button>
+          )}
 
           {result.obstacles?.length > 0 && (
             <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg px-3 py-2">
