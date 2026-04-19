@@ -351,6 +351,11 @@ function MapController({
     let azimut      = detected.azimut;
     let solarShadingFactor = null;
 
+    // Utilise le hint IA (orientation/inclinaison détectées) si pas de forcedSeg
+    if (!forcedSeg && window.__smAIHint) {
+      forcedSeg = { pitchDegrees: window.__smAIHint.inclination, azimuthDegrees: window.__smAIHint.azimut, stats: {} };
+      window.__smAIHint = null;
+    }
     let bestSolarSeg = forcedSeg || null;
     if (!forcedSeg) {
       const solarSegsLocal = solarDataRef.current?.solarPotential?.roofSegmentStats;

@@ -90,15 +90,8 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
     try {
       const analysis = await analyzeRoofWithVision(imageToUse, coords);
 
-      const bounds = window.__smActions?.getBounds?.();
       const exploitablePans = (analysis.pans || [])
         .filter(p => p.exploitable && p.polygon_pct?.length >= 3);
-
-      // Dessine chaque pan sur la carte via Mapbox Draw
-      for (const pan of exploitablePans) {
-        const polyCoords = pctToGPS(pan.polygon_pct, bounds);
-        if (polyCoords) await window.__smActions?.addAIPan?.(polyCoords, pan);
-      }
 
       const pansWithGPS = exploitablePans.map((pan, idx) => ({
         id: `ai-pan-${Date.now()}-${idx}`,
@@ -201,6 +194,15 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
               </div>
               <div className="text-muted-foreground">Azimut {pan.azimut}° · Inclinaison {pan.inclination}°</div>
               {pan.commentaire && <div className="text-muted-foreground/70 mt-0.5 italic">{pan.commentaire}</div>}
+              <button
+                onClick={() => {
+                  window.__smAIHint = { inclination: pan.inclination || 30, azimut: pan.azimut || 180 };
+                  window.__smActions?.startDraw?.();
+                }}
+                className="mt-2 w-full text-xs py-1 px-2 rounded bg-violet-500/15 border border-violet-500/30 text-violet-400 hover:bg-violet-500/25 transition-colors"
+              >
+                ✏️ Tracer ce pan ({pan.label || `Pan ${i+1}`})
+              </button>
             </div>
           ))}
 
