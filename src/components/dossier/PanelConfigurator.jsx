@@ -1,30 +1,31 @@
 import React from "react";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Sun, Ruler, Zap } from "lucide-react";
 import { calculateMaxPanels } from "@/lib/solarCalculations";
 
 export default function PanelConfigurator({ panels, data, onChange }) {
   const selectedPanel = panels.find(p => p.id === data.panel_model_id) || panels[0];
-  const maxPanels = calculateMaxPanels(data.roof_width, data.roof_height, selectedPanel?.width_mm, selectedPanel?.height_mm);
+
+  // BUG 3 fix: use max_panels from polygon grid as source of truth
+  // Fallback to calculateMaxPanels only when no polygon drawn yet
+  const maxPanels = (data.max_panels > 0)
+    ? data.max_panels
+    : calculateMaxPanels(data.roof_width, data.roof_height, selectedPanel?.width_mm, selectedPanel?.height_mm);
+
   const panelCount = data.panel_count || 0;
   const totalPower = selectedPanel ? (panelCount * selectedPanel.power_wc / 1000) : 0;
 
   const update = (field, value) => {
     const newData = { ...data, [field]: value };
-    // Recalculate max panels and total power when relevant fields change
-    if (field === "panel_model_id" || field === "roof_width" || field === "roof_height") {
-      const panel = field === "panel_model_id" ? panels.find(p => p.id === value) : selectedPanel;
-      const rw = field === "roof_width" ? value : data.roof_width;
-      const rh = field === "roof_height" ? value : data.roof_height;
-      const newMax = calculateMaxPanels(rw, rh, panel?.width_mm, panel?.height_mm);
+    if (field === "panel_model_id") {
+      const newPanel = panels.find(p => p.id === value);
+      const newMax = data.max_panels > 0
+        ? data.max_panels
+        : calculateMaxPanels(data.roof_width, data.roof_height, newPanel?.width_mm, newPanel?.height_mm);
       newData.max_panels = newMax;
-      if ((newData.panel_count || 0) > newMax) {
-        newData.panel_count = newMax;
-      }
-      newData.total_power_kwc = Math.round(((newData.panel_count || 0) * (panel?.power_wc || 0) / 1000) * 100) / 100;
+      if ((newData.panel_count || 0) > newMax) newData.panel_count = newMax;
+      newData.total_power_kwc = Math.round(((newData.panel_count || 0) * (newPanel?.power_wc || 0) / 1000) * 100) / 100;
     }
     if (field === "panel_count") {
       newData.total_power_kwc = Math.round((value * (selectedPanel?.power_wc || 0) / 1000) * 100) / 100;
@@ -36,10 +37,10 @@ export default function PanelConfigurator({ panels, data, onChange }) {
     <div className="space-y-6">
       {/* Panel selection */}
       <div className="space-y-2">
-        <Label className="text-muted-foreground text-xs uppercase tracking-wider flex items-center gap-2">
+        <label className="text-muted-foreground text-xs uppercase tracking-wider flex items-center gap-2">
           <Sun className="w-4 h-4 text-primary" />
           Modèle de panneau
-        </Label>
+        </label>
         <Select value={data.panel_model_id || ""} onValueChange={(v) => update("panel_model_id", v)}>
           <SelectTrigger className="bg-secondary/50 border-border">
             <SelectValue placeholder="Choisir un modèle" />
@@ -54,55 +55,42 @@ export default function PanelConfigurator({ panels, data, onChange }) {
         </Select>
       </div>
 
-      {/* Roof dimensions */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label className="text-muted-foreground text-xs uppercase tracking-wider flex items-center gap-2">
-            <Ruler className="w-4 h-4 text-primary" />
-            Largeur toiture (m)
-          </Label>
-          <Input
-            type="number"
-            value={data.roof_width || ""}
-            onChange={(e) => update("roof_width", parseFloat(e.target.value) || 0)}
-            className="bg-secondary/50 border-border focus:border-primary"
-            placeholder="10"
-            min={0}
-            step={0.5}
-          />
+      {/* BUG 1 fix: dimensions en lecture seule, calculées depuis le polygone GPS */}
+      {(data.roof_width > 0 || data.roof_height > 0) && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-secondary/30 rounded-lg px-3 py-2">
+            <div className="text-[10px] uppercase text-muted-foreground tracking-wider flex items-center gap-1 mb-0.5">
+              <Ruler className="w-3 h-3" /> Largeur pan
+            </div>
+            <span className="text-sm font-semibold text-foreground">{(data.roof_width || 0).toFixed(1)} m</span>
+          </div>
+          <div className="bg-secondary/30 rounded-lg px-3 py-2">
+            <div className="text-[10px] uppercase text-muted-foreground tracking-wider flex items-center gap-1 mb-0.5">
+              <Ruler className="w-3 h-3" /> Hauteur pan
+            </div>
+            <span className="text-sm font-semibold text-foreground">{(data.roof_height || 0).toFixed(1)} m</span>
+          </div>
         </div>
-        <div className="space-y-2">
-          <Label className="text-muted-foreground text-xs uppercase tracking-wider flex items-center gap-2">
-            <Ruler className="w-4 h-4 text-primary" />
-            Hauteur toiture (m)
-          </Label>
-          <Input
-            type="number"
-            value={data.roof_height || ""}
-            onChange={(e) => update("roof_height", parseFloat(e.target.value) || 0)}
-            className="bg-secondary/50 border-border focus:border-primary"
-            placeholder="6"
-            min={0}
-            step={0.5}
-          />
-        </div>
-      </div>
+      )}
 
-      {/* Max panels info */}
+      {/* BUG 3 fix: capacité max depuis le polygone réel */}
       {maxPanels > 0 && (
         <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
           <p className="text-sm text-foreground">
             Capacité maximale : <span className="font-bold text-primary">{maxPanels} panneaux</span>
+            {data.roof_area_usable > 0 && (
+              <span className="text-xs text-muted-foreground ml-2">({data.roof_area_usable} m² utiles)</span>
+            )}
           </p>
         </div>
       )}
 
-      {/* Panel count slider */}
+      {/* BUG 4 fix: slider max = data.max_panels (depuis polygone), valeur auto-initialisée */}
       <div className="space-y-3">
-        <Label className="text-muted-foreground text-xs uppercase tracking-wider flex items-center gap-2">
+        <label className="text-muted-foreground text-xs uppercase tracking-wider flex items-center gap-2">
           <Zap className="w-4 h-4 text-primary" />
           Nombre de panneaux : <span className="text-primary font-bold text-sm">{panelCount}</span>
-        </Label>
+        </label>
         <Slider
           value={[panelCount]}
           onValueChange={([v]) => update("panel_count", v)}

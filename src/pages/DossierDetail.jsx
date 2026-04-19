@@ -245,7 +245,7 @@ export default function DossierDetail() {
               settings={settingsWithPVGIS}
               pvgisData={pvgisData}
               onRoofAreaChange={(brute, utile) => setData(d => ({ ...d, roof_area: brute, roof_area_usable: utile }))}
-              onMaxPanelsChange={max => setData(d => ({ ...d, max_panels: max }))}
+              onMaxPanelsChange={max => setData(d => ({ ...d, max_panels: max, panel_count: (d.panel_count > 0) ? Math.min(d.panel_count, max) : max }))}
               onCaptureReady={img => setData(d => ({ ...d, roof_capture: img }))}
               onRoofDimensionsChange={(w, h) => setData(d => ({ ...d, roof_width: w, roof_height: h }))}
             />

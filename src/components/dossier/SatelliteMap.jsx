@@ -775,12 +775,9 @@ function MapController({
     }, 0);
 
     if (currentPans.length > 0 && onRoofDimensionsChange) {
-      let x0=Infinity, x1=-Infinity, y0=Infinity, y1=-Infinity;
-      currentPans.forEach(pan => pan.coords[0]?.forEach(([x, y]) => {
-        x0=Math.min(x0,x); x1=Math.max(x1,x); y0=Math.min(y0,y); y1=Math.max(y1,y);
-      }));
-      const dims = getBoundingBoxMeters([[[x0,y0],[x1,y0],[x1,y1],[x0,y1],[x0,y0]]]);
-      onRoofDimensionsChange(dims.width, dims.height);
+      const mainPan = currentPans.reduce((a, b) => (a.area || 0) > (b.area || 0) ? a : b);
+      const dims = getBoundingBoxMeters(mainPan.coords);
+      onRoofDimensionsChange(Math.round(dims.width * 10) / 10, Math.round(dims.height * 10) / 10);
     }
     src.setData({ type: "FeatureCollection", features: allFeatures });
     window.__smPans = currentPans;
