@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import html2canvas from "html2canvas";
 import { Sparkles, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { azimutToOrientation } from "./roofUtils";
 function anthropicUrl() {
@@ -86,14 +87,15 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
       await new Promise(r => setTimeout(r, 1000));
     }
 
-    // 2. Capturer directement depuis le canvas Mapbox (évite le cycle props/state)
-    const canvas = document.querySelector('.mapboxgl-canvas');
-    let imageToUse = canvas ? canvas.toDataURL('image/png') : imageRef.current;
-    if (!imageToUse) {
+    // 2. Capturer via html2canvas (WebGL canvas serait vide avec getCanvas())
+    const mapDiv = document.getElementById('satelliteMap');
+    if (!mapDiv) {
       setError("Carte non disponible — attendez que la carte soit chargée.");
       setStep("error");
       return;
     }
+    const capturedCanvas = await html2canvas(mapDiv, { useCORS: true, allowTaint: true, logging: false });
+    const imageToUse = capturedCanvas.toDataURL('image/png');
 
     // 3. Analyser
     setLoading(true);
