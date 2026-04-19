@@ -7,12 +7,17 @@ function anthropicUrl() {
     : '/api/anthropic';
 }
 
-async function analyzeRoofWithVision(imageBase64, coords) {
+function buildStaticMapUrl(coords, zoom = 19) {
+  const token = import.meta.env.VITE_MAPBOX_TOKEN;
+  const { lon, lat } = coords;
+  return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lon},${lat},${zoom},0/800x600?access_token=${token}`;
+}
+
+async function analyzeRoofWithVision(imageUrl, coords) {
   const locationHint = coords
     ? `La maison est à lat=${coords.lat.toFixed(4)}, lon=${coords.lon.toFixed(4)} (France).`
     : "La maison est en France.";
 
-  const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
   const isDev = window.location.hostname === 'localhost';
   const headers = {
     'Content-Type': 'application/json',
@@ -29,11 +34,11 @@ async function analyzeRoofWithVision(imageBase64, coords) {
       messages: [{
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64Data } },
-          { type: 'text', text: `Tu vois une photo aérienne d'un toit en France. ${locationHint}
+          { type: 'image', source: { type: 'url', url: imageUrl } },
+          { type: 'text', text: `Tu vois une photo aérienne satellite HD d'un toit en France. ${locationHint}
 Identifie chaque pan de toiture visible (surfaces rouge/tuile/ardoise/zinc sur le bâtiment central).
 Pour chaque pan, donne :
-- azimut : direction en degrés (0=Nord, 90=Est, 180=Sud, 270=Ouest) — déduit de la forme et de l'ombre
+- azimut : direction en degrés (0=Nord, 90=Est, 180=Sud, 270=Ouest) — déduit de la forme et de l'ombre portée
 - surface_estimee_m2 : surface approximative visible
 - exploitable : true si orienté Sud/SE/SO et sans obstacle majeur
 NE PAS estimer l'inclinaison (impossible depuis vue aérienne 2D — laisse inclination à 30 par défaut).
@@ -59,28 +64,22 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
   const [result,  setResult]  = useState(null);
   const [error,   setError]   = useState(null);
   const [step,    setStep]    = useState("idle");
-  const imageRef = useRef(capturedImage);
-
-  useEffect(() => { imageRef.current = capturedImage; }, [capturedImage]);
-
-  const handleDetect = async () => {
+const handleDetect = async () => {
     setError(null);
 
-    // 1. Zoom max + capture native Mapbox (preserveDrawingBuffer + triggerRepaint)
-    if (!window.__smActions?.prepareCapture) {
-      setError("Carte non disponible — attendez que la carte soit chargée.");
+    if (!coords) {
+      setError("Adresse non géocodée — attendez que la carte soit chargée.");
       setStep("error");
       return;
     }
-    const imageToUse = await window.__smActions.prepareCapture();
 
-    // 3. Analyser
     setLoading(true);
     setStep("analyzing");
     setResult(null);
 
     try {
-      const analysis = await analyzeRoofWithVision(imageToUse, coords);
+      const imageUrl = buildStaticMapUrl(coords);
+      const analysis = await analyzeRoofWithVision(imageUrl, coords);
 
       const exploitablePans = (analysis.pans || []).filter(p => p.exploitable);
       setResult({ ...analysis, exploitablePans });
