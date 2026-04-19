@@ -1,0 +1,10 @@
+{
+  "name": "SolarPro",
+  "short_name": "SolarPro",
+  "description": "Application de simulation solaire pour commerciaux",
+  "display": "standalone",
+  "start_url": "/",
+  "background_color": "#0a0c12",
+  "theme_color": "#E8A020",
+  "icons": []
+}

@@ -188,56 +188,32 @@ function getRegionalFallbackPVGIS(lat, lon) {
   };
 }
 
-// ── Aides régionales + aides-territoires.beta.gouv.fr ────────────────────
+// ── Aides nationales 2025 (hardcodées — mises à jour manuellement) ────────
 export async function fetchRegionalAids(lat, lon, zipcode = null) {
   const regional = getRegionalIrradiance(lat, lon);
-  const primes = { lt3: 380, lt9: 290, lt36: 180, lt100: 90 };
   let bonusRegional = 0;
   if (regional.zone === 'Méditerranée') bonusRegional = 50;
   else if (regional.zone === 'Midi-Pyrénées') bonusRegional = 30;
   else if (regional.zone === 'Aquitaine') bonusRegional = 20;
 
-  // Aides locales via aides-territoires.beta.gouv.fr
-  let aidesLocales = [];
-  if (zipcode) {
-    try {
-      const r = await fetch(
-        `https://aides-territoires.beta.gouv.fr/api/aids/?text=photovoltaique&zipcode=${zipcode}&format=json`,
-        { signal: AbortSignal.timeout(5000) }
-      );
-      if (r.ok) {
-        const d = await r.json();
-        aidesLocales = (d.results ?? []).slice(0, 8).map(a => ({
-          name: a.name,
-          description: (a.description ?? '').replace(/<[^>]+>/g, '').slice(0, 250),
-          url: a.origin_url ?? a.url ?? '',
-          financers: (a.financers ?? []).map(f => f.name),
-        }));
-      }
-    } catch (e) {
-      console.warn('[aides-territoires]', e.message);
-    }
-  }
-
   return {
-    prime_lt3_kwc:              primes.lt3 + bonusRegional,
-    prime_lt9_kwc:              primes.lt9,
-    prime_lt36_kwc:             primes.lt36,
-    prime_autoconsommation_kwc: primes.lt3 + bonusRegional,
+    prime_lt3_kwc:              380 + bonusRegional,
+    prime_lt9_kwc:              290,
+    prime_lt36_kwc:             180,
+    prime_autoconsommation_kwc: 380 + bonusRegional,
     tarif_rachat_lt3:           0.1302,
     tva_reduite:                10,
     eco_ptz_max:                30000,
     maprimerenov:               0,
     region:                     regional.zone,
     city:                       regional.city,
-    aidesLocales,
+    aidesLocales:               [],
     sources: [
-      'Arrêté tarifaire EDF OA 2025',
+      'Prime autoconsommation — Arrêté tarifaire EDF OA 2025',
       'TVA 10% (Art. 278-0 bis CGI)',
-      'Éco-PTZ (Art. 244 quater U CGI)',
-      ...(aidesLocales.length ? [`${aidesLocales.length} aide(s) locale(s) — aides-territoires.beta.gouv.fr`] : []),
+      'Éco-PTZ max 30 000€ (Art. 244 quater U CGI)',
     ],
-    updated: new Date().toISOString().slice(0, 10),
+    updated: '2025-01-01',
   };
 }
 
