@@ -7,13 +7,17 @@ function visionEndpoint() {
     : '/api/roof-vision';
 }
 
-// Calcule les bounds géographiques d'une image Mapbox Static
-// zoom 19, 800x600px, centrée sur (lat, lon)
+// Bounds exacts de l'image Mapbox Static (zoom 19, 800x600px)
 function staticImageBounds(lat, lon, zoom = 19, w = 800, h = 600) {
-  const mPerPx = (40075016.686 * Math.cos(lat * Math.PI / 180)) / (256 * Math.pow(2, zoom));
-  const wDeg = (w * mPerPx) / (111320 * Math.cos(lat * Math.PI / 180));
-  const hDeg = (h * mPerPx) / 110574;
-  return { west: lon - wDeg / 2, east: lon + wDeg / 2, north: lat + hDeg / 2, south: lat - hDeg / 2 };
+  const mPerPx = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
+  const halfW = (w / 2) * mPerPx;
+  const halfH = (h / 2) * mPerPx;
+  return {
+    west:  lon - halfW / 111320,
+    east:  lon + halfW / 111320,
+    north: lat + halfH / 110540,
+    south: lat - halfH / 110540,
+  };
 }
 
 function pixelsToGPS(coins, bounds, w = 800, h = 600) {
