@@ -14,7 +14,6 @@ import PanelConfigurator from "@/components/dossier/PanelConfigurator";
 import ProfitabilityStudy from "@/components/dossier/ProfitabilityStudy";
 import ExportPdfButton from "@/components/dossier/ExportPdfButton";
 import SolarAI from "@/components/dossier/SolarAI";
-import SolarRoofDetector from "@/components/dossier/SolarRoofDetector";
 import { fetchPVGISData, fetchRegionalAids, fetchEDFPrice } from "@/lib/pvgisApi";
 import ScenarioComparator from "@/components/dossier/ScenarioComparator";
 
@@ -252,18 +251,7 @@ export default function DossierDetail() {
             />
           </div>
 
-          <div className="rounded-xl bg-card border border-border p-6">
-            <h2 className="text-lg font-semibold mb-4">Détection IA des pans</h2>
-            <SolarRoofDetector
-              capturedImage={data?.roof_capture}
-              coords={coords}
-              onDetected={(aiPans) => {
-                window.__smPans = [...(window.__smPans || []), ...aiPans];
-              }}
-            />
-          </div>
-
-          <SolarAI
+<SolarAI
             pans={pans}
             panel={selectedPanel}
             settings={settingsWithPVGIS}

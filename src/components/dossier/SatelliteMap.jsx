@@ -6,6 +6,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import { MapPin, Pencil, Trash2, RotateCcw, Layers, Plus, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import SolarRoofDetector from "@/components/dossier/SolarRoofDetector";
 import * as turf from "@turf/turf";
 import {
   geocode, geojsonArea, buildPanelGridRotated, detectPanOrientation,
@@ -1065,6 +1066,17 @@ export default function SatelliteMap({
         </div>
         <span className="text-muted-foreground hidden sm:inline">&#128432; Clic droit + glisser = rotation libre</span>
       </div>
+
+      {/* Détection IA des pans */}
+      {coords && (
+        <SolarRoofDetector
+          capturedImage={null}
+          coords={coords}
+          onDetected={(aiPans) => {
+            window.__smPans = [...(window.__smPans || []), ...aiPans];
+          }}
+        />
+      )}
 
       {/* Instruction trac&#233; */}
       {isDrawing && (
