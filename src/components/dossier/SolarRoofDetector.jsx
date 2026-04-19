@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from "react";
-import html2canvas from "html2canvas";
 import { Sparkles, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { azimutToOrientation } from "./roofUtils";
 function anthropicUrl() {
@@ -77,22 +76,13 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
   const handleDetect = async () => {
     setError(null);
 
-    // 1. Zoom max, pitch 0, bearing 0 — attend que la carte soit idle
-    if (window.__smActions?.prepareCapture) {
-      await window.__smActions.prepareCapture();
-    } else {
-      await new Promise(r => setTimeout(r, 2000));
-    }
-
-    // 2. Capturer via html2canvas (scale:2 pour double résolution)
-    const mapDiv = document.getElementById('satelliteMap');
-    if (!mapDiv) {
+    // 1. Zoom max + capture native Mapbox (preserveDrawingBuffer + triggerRepaint)
+    if (!window.__smActions?.prepareCapture) {
       setError("Carte non disponible — attendez que la carte soit chargée.");
       setStep("error");
       return;
     }
-    const capturedCanvas = await html2canvas(mapDiv, { scale: 2, useCORS: true, allowTaint: true, logging: false });
-    const imageToUse = capturedCanvas.toDataURL('image/png');
+    const imageToUse = await window.__smActions.prepareCapture();
 
     // 3. Analyser
     setLoading(true);

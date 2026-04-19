@@ -882,8 +882,12 @@ function MapController({
       prepareCapture: () => new Promise(resolve => {
         const c = window.__smCoords;
         mbMap.flyTo({ center: c ? [c.lon, c.lat] : mbMap.getCenter(), zoom: 20, pitch: 0, bearing: 0, duration: 1500 });
-        const timeout = setTimeout(resolve, 5000);
-        mbMap.once('idle', () => { clearTimeout(timeout); setTimeout(resolve, 300); });
+        const capture = () => {
+          mbMap.once('render', () => resolve(mbMap.getCanvas().toDataURL('image/png')));
+          mbMap.triggerRepaint();
+        };
+        const timeout = setTimeout(capture, 5000);
+        mbMap.once('idle', () => { clearTimeout(timeout); setTimeout(capture, 300); });
       }),
       capture: () => {
         try { onCaptureReady?.(mbMap.getCanvas().toDataURL("image/png")); }
@@ -1209,6 +1213,7 @@ export default function SatelliteMap({
         <Map id="satelliteMap" mapboxAccessToken={TOKEN}
           initialViewState={{ longitude: 2.3, latitude: 46.8, zoom: 5, pitch: 45, bearing: 0 }}
           style={{ width: "100%", height: "100%" }} mapStyle={BASE_MAPSTYLE} maxZoom={22}
+          preserveDrawingBuffer={true}
           onLoad={() => setReady(true)}>
           <MapController
             address={address} panel={panel} orientation={orientation}
