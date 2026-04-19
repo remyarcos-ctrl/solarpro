@@ -2,10 +2,10 @@ import React, { useState } from "react";
 import { Sparkles, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { azimutToOrientation } from "./roofUtils";
 
-function visionEndpoint() {
-  return '/api/roof-vision';
-}
+function visionEndpoint() { return '/api/roof-vision'; }
+function maskEndpoint()   { return '/api/solar-mask';  }
 
+// ── Fallback Vision-only : bounds pixel → GPS ────────────────────────────
 function staticImageBounds(lat, lon, zoom = 19, w = 800, h = 600) {
   const mPerPx = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
   const halfW = (w / 2) * mPerPx;
@@ -27,19 +27,7 @@ function pixelsToGPS(coins, bounds, w = 800, h = 600) {
   return [ring];
 }
 
-function buildBoundingBoxPolygon(seg) {
-  const sw = seg.boundingBox?.sw;
-  const ne = seg.boundingBox?.ne;
-  if (!sw || !ne) return null;
-  return [[
-    [sw.longitude, sw.latitude],
-    [ne.longitude, sw.latitude],
-    [ne.longitude, ne.latitude],
-    [sw.longitude, ne.latitude],
-    [sw.longitude, sw.latitude],
-  ]];
-}
-
+// ── Appel API Vision (prompt arbitraire) ────────────────────────────────
 async function callVision(coords, prompt) {
   const r = await fetch(visionEndpoint(), {
     method: 'POST',
@@ -47,8 +35,8 @@ async function callVision(coords, prompt) {
     body: JSON.stringify({ lat: coords.lat, lon: coords.lon, prompt }),
   });
   if (!r.ok) {
-    const body = await r.json().catch(() => ({}));
-    throw new Error(`roof-vision HTTP ${r.status}: ${body.error || 'unknown'}`);
+    const b = await r.json().catch(() => ({}));
+    throw new Error(`roof-vision HTTP ${r.status}: ${b.error || 'unknown'}`);
   }
   const data = await r.json();
   const text = data.content?.[0]?.text || '';
@@ -57,36 +45,50 @@ async function callVision(coords, prompt) {
   return JSON.parse(match[0]);
 }
 
-async function analyzeWithSolarAndVision(coords, solarSegs) {
-  const segsForPrompt = solarSegs
-    .map((s, i) => ({
-      id: i,
-      azimut: Math.round(s.azimuthDegrees ?? 180),
-      inclinaison: Math.round(s.pitchDegrees ?? 30),
-      surface_m2: Math.round(s.stats?.areaMeters2 ?? 0),
-      soleil_h_an: Math.round(s.stats?.sunshineHoursPerYear ?? 0),
-    }))
-    .filter(s => s.surface_m2 > 3 && (s.inclinaison ?? 90) < 70);
+// ── Appel API Solar Mask (polygones GPS exacts) ──────────────────────────
+async function fetchSolarMask(coords) {
+  const r = await fetch(maskEndpoint(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lat: coords.lat, lon: coords.lon }),
+  });
+  if (!r.ok) {
+    const b = await r.json().catch(() => ({}));
+    throw new Error(`solar-mask HTTP ${r.status}: ${b.error || 'unknown'}`);
+  }
+  return r.json();
+}
+
+// ── Vision : obstacles par segment (utilise les segments déjà en mémoire) ─
+async function analyzeObstaclesPerSegment(coords, segments) {
+  const segsForPrompt = segments.map((s, i) => ({
+    id: i,
+    azimut: Math.round(s.azimut ?? 180),
+    inclinaison: Math.round(s.pitch ?? 30),
+    surface_m2: Math.round(s.area ?? 0),
+    soleil_h_an: Math.round(s.sunshineHours ?? 0),
+  }));
 
   const prompt = `Tu es expert installateur solaire en France.
-Voici les données Google Solar API pour ce toit (${segsForPrompt.length} segments) :
+Voici les segments Solar API pour ce toit (${segsForPrompt.length} segments) :
 ${JSON.stringify(segsForPrompt)}
 
 Et voici la photo satellite du même toit.
 
-Pour chaque segment, identifie visuellement les obstacles présents sur le toit (velux, cheminées, antennes, conduits) et évalue chaque pan.
+Pour chaque segment, identifie les obstacles visibles (velux, cheminées, antennes, conduits) et évalue si le pan vaut une installation.
 
 Retourne UNIQUEMENT ce JSON (sans markdown) :
-{"segments":[{"segment_id":0,"obstacles":["cheminée ~0.5m²"],"surface_exploitable_m2":25,"recommande":true,"nb_panneaux_optimal":10,"raison":"Pan Sud optimal, peu d'obstacles"}],"recommandation_generale":"...","confiance":85}`;
+{"segments":[{"segment_id":0,"obstacles":["cheminée ~0.5m²"],"surface_exploitable_m2":25,"recommande":true,"nb_panneaux_optimal":10,"raison":"Pan Sud, peu d'obstacles"}],"recommandation_generale":"...","confiance":85}`;
 
   return callVision(coords, prompt);
 }
 
+// ── Vision seule : pans + obstacles en pixels ────────────────────────────
 async function analyzeRoofWithVision(coords) {
   const prompt = `Tu es un expert en détection de toiture solaire.
 Regarde cette image satellite. L'image fait 800x600 pixels.
 Pour chaque pan de toit visible (tuile rouge, ardoise grise, zinc), donne les coordonnées EXACTES en pixels des coins du polygone.
-Pour chaque obstacle visible sur le toit (cheminée, lucarne, velux, antenne, conduit), donne aussi ses coins en pixels.
+Pour chaque obstacle visible (cheminée, lucarne, velux, antenne, conduit), donne aussi ses coins en pixels.
 Coordonnées : x=colonne, y=ligne depuis le coin haut-gauche.
 
 Retourne UNIQUEMENT ce JSON (sans markdown) :
@@ -95,11 +97,13 @@ Retourne UNIQUEMENT ce JSON (sans markdown) :
   return callVision(coords, prompt);
 }
 
-export default function SolarRoofDetector({ capturedImage, coords, onDetected, onRequestCapture }) {
+// ────────────────────────────────────────────────────────────────────────
+export default function SolarRoofDetector({ capturedImage, coords }) {
   const [loading, setLoading] = useState(false);
   const [result,  setResult]  = useState(null);
   const [error,   setError]   = useState(null);
   const [step,    setStep]    = useState("idle");
+  const [mode,    setMode]    = useState(null);
 
   const handleDetect = async () => {
     setError(null);
@@ -111,47 +115,71 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
     setLoading(true);
     setStep("analyzing");
     setResult(null);
+    setMode(null);
 
     try {
-      const solarSegs = window.__smSolarSegments;
+      // ── Mode Solar Mask + Vision ──────────────────────────────────────
+      let maskOk = false;
+      let maskData = null;
 
-      if (solarSegs?.length > 0) {
-        // ── Mode combiné : Solar API (GPS exact) + Vision (obstacles) ────
-        const analysis = await analyzeWithSolarAndVision(coords, solarSegs);
-        const validSegs = (analysis.segments || []).filter(s => s.recommande !== false);
+      try {
+        // Lancer les deux en parallèle : polygones GPS + vision obstacles
+        const maskPromise = fetchSolarMask(coords);
+        // On utilise les segments déjà chargés pour le prompt Vision
+        const solarSegs = window.__smSolarSegments;
+        const visionPromise = solarSegs?.length > 0
+          ? analyzeObstaclesPerSegment(coords, solarSegs.map(s => ({
+              azimut: s.azimuthDegrees, pitch: s.pitchDegrees,
+              area: s.stats?.areaMeters2, sunshineHours: s.stats?.sunshineHoursPerYear,
+            })))
+          : Promise.resolve(null);
 
-        for (const s of validSegs) {
-          const sourceSeg = solarSegs[s.segment_id];
-          if (!sourceSeg) continue;
-          const polyCoords = buildBoundingBoxPolygon(sourceSeg);
-          if (!polyCoords) continue;
-          await window.__smActions?.addAIPan?.(polyCoords, {
-            azimut: sourceSeg.azimuthDegrees ?? 180,
-            inclination: sourceSeg.pitchDegrees ?? 30,
-            surface_estimee_m2: s.surface_exploitable_m2 ?? sourceSeg.stats?.areaMeters2,
+        const [mask, vision] = await Promise.all([maskPromise, visionPromise]);
+        maskData = mask;
+        maskOk = true;
+
+        // Indexer les résultats Vision par segment_id
+        const visionMap = {};
+        if (vision?.segments) {
+          for (const s of vision.segments) visionMap[s.segment_id] = s;
+        }
+
+        const drawn = [];
+        for (let i = 0; i < maskData.segments.length; i++) {
+          const seg = maskData.segments[i];
+          const vis = visionMap[i] ?? {};
+          if (vis.recommande === false) continue;
+
+          await window.__smActions?.addAIPan?.(seg.polygon, {
+            azimut: seg.azimut,
+            inclination: seg.pitch,
+            surface_estimee_m2: vis.surface_exploitable_m2 ?? seg.area,
             obstacles: [],
+          });
+
+          drawn.push({
+            nom: `Pan ${azimutToOrientation(seg.azimut)} — ${Math.round(seg.pitch)}°`,
+            azimut: seg.azimut,
+            area: Math.round(seg.area),
+            sunshineHours: Math.round(seg.sunshineHours),
+            obstacles: vis.obstacles ?? [],
+            surface_exploitable_m2: vis.surface_exploitable_m2 ?? Math.round(seg.area),
+            nb_panneaux_optimal: vis.nb_panneaux_optimal,
+            raison: vis.raison,
           });
         }
 
+        setMode('mask');
         setResult({
-          mode: 'solar',
-          exploitablePans: validSegs.map(s => {
-            const src = solarSegs[s.segment_id] ?? {};
-            return {
-              nom: `Pan ${azimutToOrientation(src.azimuthDegrees ?? 180)} — ${Math.round(src.pitchDegrees ?? 0)}°`,
-              azimut: src.azimuthDegrees ?? 180,
-              obstacles: s.obstacles || [],
-              surface_exploitable_m2: s.surface_exploitable_m2,
-              nb_panneaux_optimal: s.nb_panneaux_optimal,
-              raison: s.raison,
-            };
-          }),
-          recommandation_generale: analysis.recommandation_generale,
-          confiance: analysis.confiance,
+          exploitablePans: drawn,
+          recommandation_generale: vision?.recommandation_generale,
+          confiance: vision?.confiance ?? 90,
         });
 
-      } else {
-        // ── Mode Vision seul (pixels → GPS) ───────────────────────────────
+      } catch (maskErr) {
+        console.warn('[solar-mask] fallback Vision-only:', maskErr.message);
+
+        // ── Fallback Vision seule (pixels → GPS) ─────────────────────
         const analysis = await analyzeRoofWithVision(coords);
         const bounds = staticImageBounds(coords.lat, coords.lon);
         const exploitablePans = (analysis.pans || []).filter(p => p.exploitable && p.coins?.length >= 3);
@@ -172,6 +200,7 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
           );
         }
 
+        setMode('vision');
         setResult({ ...analysis, exploitablePans });
       }
 
@@ -185,7 +214,7 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
     }
   };
 
-  const reset = () => { setResult(null); setError(null); setStep("idle"); };
+  const reset = () => { setResult(null); setError(null); setStep("idle"); setMode(null); };
   const n = result?.exploitablePans?.length ?? 0;
 
   return (
@@ -201,7 +230,7 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
         }`}
       >
         {loading
-          ? <><Loader2 className="w-4 h-4 animate-spin" /> Analyse IA en cours…</>
+          ? <><Loader2 className="w-4 h-4 animate-spin" /> Analyse en cours…</>
           : step === "done"
           ? <><CheckCircle className="w-4 h-4" /> {n} pan{n > 1 ? "s" : ""} détecté{n > 1 ? "s" : ""} · Relancer</>
           : step === "error"
@@ -212,8 +241,8 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
       {step === "idle" && (
         <p className="text-xs text-muted-foreground text-center">
           {window.__smSolarSegments?.length > 0
-            ? `✓ ${window.__smSolarSegments.length} segments Solar API prêts — analyse combinée`
-            : '💡 Lancez la détection pour analyser la toiture'}
+            ? `✓ ${window.__smSolarSegments.length} segments Solar API chargés`
+            : '💡 Lancez la détection IA de la toiture'}
         </p>
       )}
 
@@ -223,12 +252,12 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
             <div className="flex gap-1">
               {[0,1,2].map(i => <div key={i} className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" style={{animationDelay:`${i*0.15}s`}} />)}
             </div>
-            <span className="text-sm text-violet-400 font-medium">Claude Vision analyse l'image satellite…</span>
+            <span className="text-sm text-violet-400 font-medium">Analyse en cours…</span>
           </div>
           <div className="space-y-1.5 text-xs text-muted-foreground">
-            <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-pulse" /><span>Lecture des segments Solar API</span></div>
-            <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-violet-400/60 rounded-full animate-pulse" style={{animationDelay:"0.3s"}} /><span>Identification des obstacles sur l'image</span></div>
-            <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-violet-400/40 rounded-full animate-pulse" style={{animationDelay:"0.6s"}} /><span>Placement automatique des panneaux</span></div>
+            <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-pulse" /><span>Téléchargement masque Solar API (GeoTIFF)</span></div>
+            <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-violet-400/60 rounded-full animate-pulse" style={{animationDelay:"0.3s"}} /><span>Extraction contours par segment</span></div>
+            <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-violet-400/40 rounded-full animate-pulse" style={{animationDelay:"0.6s"}} /><span>Détection obstacles (Claude Vision)</span></div>
           </div>
         </div>
       )}
@@ -239,12 +268,11 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
 
       {result && step === "done" && (
         <div className="space-y-3">
-          {result.mode === 'solar' && (
-            <div className="flex items-center gap-2 text-xs text-emerald-400">
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 font-semibold">Google Solar API</span>
-              <span className="text-muted-foreground">+ Claude Vision</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 text-xs">
+            {mode === 'mask'
+              ? <><span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-semibold">Solar Mask GPS</span><span className="text-muted-foreground">+ Claude Vision</span></>
+              : <span className="px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-500/30 text-violet-400 font-semibold">Claude Vision</span>}
+          </div>
 
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">Confiance IA</span>
@@ -260,12 +288,15 @@ export default function SolarRoofDetector({ capturedImage, coords, onDetected, o
             <div key={i} className="text-xs px-3 py-2 bg-secondary/30 rounded-lg border border-border space-y-1">
               <div className="flex items-center justify-between">
                 <span className="font-medium text-foreground">{pan.nom || `Pan ${i+1}`}</span>
-                <span className="text-muted-foreground">
-                  {pan.azimut != null ? `${pan.azimut}°` : ''}
+                <span className="text-muted-foreground text-[10px]">
+                  {pan.azimut != null ? `${Math.round(pan.azimut)}°` : ''}
                   {pan.surface_exploitable_m2 ? ` · ${pan.surface_exploitable_m2}m²` : ''}
-                  {pan.nb_panneaux_optimal ? ` · ${pan.nb_panneaux_optimal} panneaux` : ''}
+                  {pan.nb_panneaux_optimal ? ` · ~${pan.nb_panneaux_optimal} 🔆` : ''}
                 </span>
               </div>
+              {pan.sunshineHours > 0 && (
+                <div className="text-amber-300 text-[10px]">☀️ {pan.sunshineHours} h/an</div>
+              )}
               {pan.obstacles?.length > 0 && (
                 <div className="text-amber-400">⚠️ {pan.obstacles.join(', ')}</div>
               )}
