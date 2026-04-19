@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { localClients } from "@/lib/localStore";
 import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Save, ArrowLeft } from "lucide-react";
@@ -91,7 +91,7 @@ export default function NewDossier() {
   }, [data.panel_count, selectedPanel, settings, pvgisData]);
 
   const createMutation = useMutation({
-    mutationFn: (clientData) => base44.entities.Client.create(clientData),
+    mutationFn: (clientData) => localClients.create(clientData),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       toast.success("Dossier créé avec succès");

@@ -1,6 +1,6 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { localClients } from "@/lib/localStore";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { FolderPlus, FileCheck, Zap, DollarSign, UserPlus } from "lucide-react";
@@ -11,7 +11,7 @@ import { formatCurrency, formatNumber } from "@/lib/solarCalculations";
 export default function Dashboard() {
   const { data: clients, isLoading } = useQuery({
     queryKey: ["clients"],
-    queryFn: () => base44.entities.Client.list("-created_date"),
+    queryFn: () => localClients.list(),
     initialData: [],
   });
 

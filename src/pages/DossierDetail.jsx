@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { localClients } from "@/lib/localStore";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Save, ArrowLeft, Trash2 } from "lucide-react";
@@ -32,7 +32,7 @@ export default function DossierDetail() {
   const { isLoading } = useQuery({
     queryKey: ["client", clientId],
     queryFn: async () => {
-      const clients = await base44.entities.Client.filter({ id: clientId });
+      const clients = localClients.filter({ id: clientId });
       if (clients.length > 0) setData(clients[0]);
       return clients[0] || null;
     },
@@ -93,7 +93,7 @@ export default function DossierDetail() {
   }, [data?.panel_count, selectedPanel, settingsWithPVGIS, pans, pvgisData]);
 
   const updateMutation = useMutation({
-    mutationFn: (d) => base44.entities.Client.update(clientId, d),
+    mutationFn: (d) => localClients.update(clientId, d),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client", clientId] });
       queryClient.invalidateQueries({ queryKey: ["clients"] });
@@ -102,7 +102,7 @@ export default function DossierDetail() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => base44.entities.Client.delete(clientId),
+    mutationFn: () => localClients.delete(clientId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       toast.success("Dossier supprimé");

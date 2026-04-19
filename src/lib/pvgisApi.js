@@ -94,13 +94,11 @@ export function getMonthlyProduction(annualKwh, lat = 46) {
   }));
 }
 
-// En dev, le plugin Base44 intercepte /api/* → on utilise /jrc/* pour contourner.
-// Le proxy Vite /jrc → https://re.jrc.ec.europa.eu/api (voir vite.config.js).
+// Dev : proxy Vite /jrc → re.jrc.ec.europa.eu (voir vite.config.js)
+// Prod : Vercel Function /api/pvgis → re.jrc.ec.europa.eu (évite CORS)
 function pvgisUrl(params) {
-  if (window.location.hostname === 'localhost') {
-    return `/jrc/v5_2/PVcalc?${params}`;
-  }
-  return `https://re.jrc.ec.europa.eu/api/v5_2/PVcalc?${params}`;
+  if (import.meta.env.DEV) return `/jrc/v5_2/PVcalc?${params}`;
+  return `/api/pvgis?${params}`;
 }
 
 async function pvgisFetch(url) {
@@ -243,25 +241,8 @@ export async function fetchRegionalAids(lat, lon, zipcode = null) {
   };
 }
 
-// ── Prix EDF — fetch live avec fallback CRE 2025 ─────────────────────────
+// ── Prix EDF — tarif fixe CRE 2025 (mise à jour manuelle dans Paramètres) ──
 export async function fetchEDFPrice() {
-  try {
-    const r = await fetch('https://www.api-electricity.fr/tariffs/france', {
-      signal: AbortSignal.timeout(4000),
-    });
-    if (r.ok) {
-      const d = await r.json();
-      const price = d?.tarif_base ?? d?.base ?? d?.price ?? d?.value;
-      if (price && price > 0.1 && price < 1.5) {
-        return {
-          price:      parseFloat(price.toFixed(4)),
-          tarif:      d?.name ?? 'Tarif Bleu Base EDF',
-          lastUpdate: d?.date ?? new Date().toISOString().slice(0, 10),
-          source:     'api-electricity.fr (live)',
-        };
-      }
-    }
-  } catch { /* fallback ci-dessous */ }
   return {
     price:      0.2516,
     price_hp:   0.2550,
@@ -269,7 +250,7 @@ export async function fetchEDFPrice() {
     tarif:      'Tarif Bleu Base EDF — Février 2025',
     evolution:  '+5.3% vs 2024',
     lastUpdate: '2025-02-01',
-    source:     'CRE / EDF (fallback)',
+    source:     'CRE / EDF',
   };
 }
 
