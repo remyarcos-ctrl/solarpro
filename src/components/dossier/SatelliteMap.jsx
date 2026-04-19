@@ -399,7 +399,7 @@ function MapController({
     if (!panel) console.warn("[pan] panel non défini — utilisation dimensions par défaut 1134×1722mm");
     const gridResult = buildPanelGridRotated(
       polyCoords, panelW, panelH, 9999, orientation,
-      azimut, 0.20, 0.02, inclination, cLat, []
+      azimut, 0.20, 0.02, inclination, cLat, window.__smAIObstacles || []
     );
     const maxPanelsTraced = gridResult?.max ?? 0;
 
@@ -445,7 +445,7 @@ function MapController({
         if (lidar) {
           const lidarGrid = buildPanelGridRotated(
             polyCoords, panelW, panelH, 9999, orientation,
-            azimut, 0.20, 0.02, lidar.pitch, cLat, []
+            azimut, 0.20, 0.02, lidar.pitch, cLat, window.__smAIObstacles || []
           );
           const maxLidar = lidarGrid?.max ?? maxPanels;
           setPans(prev => prev.map(p => {
@@ -902,6 +902,14 @@ function MapController({
         const b = mbMap.getBounds();
         return { west: b.getWest(), east: b.getEast(), north: b.getNorth(), south: b.getSouth() };
       },
+      showObstacles: (obstacles) => {
+        const features = (obstacles || []).map(o => ({
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: o.coords },
+          properties: { label: o.type || 'obstacle', type: o.type || 'obstacle' },
+        }));
+        mbMap.getSource('obstacles-layer')?.setData({ type: 'FeatureCollection', features });
+      },
       addAIPan: async (polyCoords, aiData) => {
         const ids = drawRef.current?.add({
           type: 'Feature', geometry: { type: 'Polygon', coordinates: polyCoords }, properties: {}
@@ -912,7 +920,9 @@ function MapController({
           azimuthDegrees: aiData.azimut || 180,
           stats: { areaMeters2: aiData.surface_estimee_m2 || null },
         };
+        window.__smAIObstacles = aiData.obstacles || [];
         await createPanFromCoordsRef.current(polyCoords, drawId, forcedSeg, null);
+        window.__smAIObstacles = [];
       },
       prepareCapture: () => new Promise(resolve => {
         const c = window.__smCoords;

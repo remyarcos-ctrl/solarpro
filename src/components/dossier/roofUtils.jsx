@@ -196,6 +196,12 @@ export function buildPanelGridRotated(
 
     const localRing = pts.map(p => toLocal(p[0], p[1]));
 
+    // Convert obstacle GPS polygons to local metric rings
+    const localObstacles = (_obstacles || []).map(obs => {
+      const ring = Array.isArray(obs[0]?.[0]) ? obs[0] : obs;
+      return ring.map(pt => toLocal(pt[0], pt[1]));
+    }).filter(r => r.length >= 3);
+
     // ── 3. PIP par lancer de rayon (espace métrique, rapide et précis) ───
     function pip(x, y) {
       let inside = false;
@@ -210,11 +216,34 @@ export function buildPanelGridRotated(
       return inside;
     }
 
-    // Panneau entièrement à l'intérieur : 4 coins + centre
+    function pipRing(ring, x, y) {
+      let inside = false;
+      const n = ring.length;
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const xi = ring[i][0], yi = ring[i][1];
+        const xj = ring[j][0], yj = ring[j][1];
+        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    }
+
+    function panelHitsObstacle(x, y, pw, ph) {
+      if (!localObstacles.length) return false;
+      const cx = x + pw / 2, cy = y + ph / 2;
+      return localObstacles.some(ring =>
+        pipRing(ring, cx, cy) || pipRing(ring, x, y) ||
+        pipRing(ring, x + pw, y) || pipRing(ring, x + pw, y + ph) || pipRing(ring, x, y + ph)
+      );
+    }
+
+    // Panneau entièrement à l'intérieur et hors obstacles : 4 coins + centre
     function panelInside(x, y, pw, ph) {
       return pip(x,      y     ) && pip(x + pw, y     ) &&
              pip(x + pw, y + ph) && pip(x,      y + ph) &&
-             pip(x + pw/2, y + ph/2);
+             pip(x + pw/2, y + ph/2) &&
+             !panelHitsObstacle(x, y, pw, ph);
     }
 
     // ── 4. Bbox locale ───────────────────────────────────────────────────
