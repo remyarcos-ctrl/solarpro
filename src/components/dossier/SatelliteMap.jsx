@@ -329,8 +329,8 @@ function MapController({
   const labelMarkersRef = useRef([]);
   const snapMarkerRef = useRef(null);
   const fluxLoadedRef = useRef(false);
-  const gridDataRef   = useRef(null);  // { cells, cellSizeMeters, minFlux, maxFlux }
-  const excludedRef   = useRef(new Set());
+  const fluxBlobUrlRef = useRef(null);
+  const excludedPanelsRef = useRef(new Set()); // ids "s{segIdx}-p{panelIdx}"
   const [gridVersion, setGridVersion] = useState(0);
   const initializedRef = useRef(false);
   const pansRef = useRef([]);
@@ -509,35 +509,35 @@ function MapController({
       mbMap.addLayer({ id: "panels-fill", type: "fill", source: "panels-multi", paint: { "fill-color": ["get", "fillColor"], "fill-opacity": 0.92 } });
       mbMap.addLayer({ id: "panels-line", type: "line", source: "panels-multi", paint: { "line-color": ["get", "lineColor"], "line-width": 1.2 } });
     }
-    if (!mbMap.getSource("flux-grid")) {
-      // Grille cliquable Solar API : une feature = une cellule (~1m), cliquable.
-      mbMap.addSource("flux-grid", { type: "geojson", data: { type: "FeatureCollection", features: [] }, promoteId: "id" });
+    if (!mbMap.getSource("solar-flux")) {
+      // Overlay heatmap PNG (toggle séparé "Flux solaire"). Source image
+      // initialisée vide, url + bounds fournis au 1er clic du bouton.
+      mbMap.addSource("solar-flux", {
+        type: "image",
+        url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+        coordinates: [[0,0],[0,0],[0,0],[0,0]],
+      });
       mbMap.addLayer({
-        id: "flux-grid-fill", type: "fill", source: "flux-grid",
+        id: "solar-flux-layer", type: "raster", source: "solar-flux",
         layout: { visibility: "none" },
+        paint: { "raster-opacity": 0.60, "raster-fade-duration": 0 },
+      });
+    }
+    if (!mbMap.getSource("bdtopo-guide")) {
+      mbMap.addSource("bdtopo-guide", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+        promoteId: "id", // nécessaire pour feature-state par panneau
+      });
+      mbMap.addLayer({
+        id: "bdtopo-guide-fill", type: "fill", source: "bdtopo-guide",
         paint: {
           "fill-color": [
             "case",
             ["boolean", ["feature-state", "excluded"], false], "#555555",
-            [
-              "interpolate", ["linear"], ["get", "norm"],
-              0.0, "#4a1a00",
-              0.5, "#d35400",
-              1.0, "#ffc04d"
-            ]
+            "#E8A020",
           ],
-          "fill-opacity": 0.70,
-          "fill-outline-color": "rgba(0,0,0,0.25)",
-        },
-      });
-    }
-    if (!mbMap.getSource("bdtopo-guide")) {
-      mbMap.addSource("bdtopo-guide", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      mbMap.addLayer({
-        id: "bdtopo-guide-fill", type: "fill", source: "bdtopo-guide",
-        paint: {
-          "fill-color": "#E8A020",
-          "fill-opacity": ["case", ["==", ["get", "kind"], "solar-panel"], 0.55, 0.08],
+          "fill-opacity": ["case", ["==", ["get", "kind"], "solar-panel"], 0.60, 0.08],
         },
       });
       // Panneaux Solar API : ligne fine orange continue
@@ -795,29 +795,7 @@ function MapController({
     let totalMax = 0;
 
     const googleSolar = solarDataRef?.current?.solarPotential;
-
-    // Cellules exclues pour filtrer les panneaux Google
-    const gridData = gridDataRef.current;
-    const excluded = excludedRef.current;
-    const hasExclusions = gridData && excluded.size > 0;
-    const cellSize = gridData?.cellSizeMeters ?? 1.0;
-    const excludedCells = hasExclusions
-      ? gridData.cells.filter(c => excluded.has(c.id)).map(c => {
-          const mPerDegLng = 111320 * Math.cos((c.lat * Math.PI) / 180);
-          return {
-            lat: c.lat, lng: c.lng,
-            halfLat: (cellSize / 2) / 110540,
-            halfLng: (cellSize / 2) / mPerDegLng,
-          };
-        })
-      : [];
-    const isInExcludedCell = (panelLat, panelLng) => {
-      for (const c of excludedCells) {
-        if (Math.abs(panelLat - c.lat) <= c.halfLat && Math.abs(panelLng - c.lng) <= c.halfLng) return true;
-      }
-      return false;
-    };
-
+    const excludedPanelIds = excludedPanelsRef.current;
     let totalYearlyKwh = 0;
 
     currentPans.forEach(pan => {
@@ -836,22 +814,19 @@ function MapController({
       if (hasGooglePanels) {
         const gWm = googleSolar.panelWidthMeters  || 1.0;
         const gHm = googleSolar.panelHeightMeters || 1.65;
-        // Filtre : exclure les panneaux Google dont le centre tombe sur une cellule exclue
-        const segPanels = hasExclusions
-          ? googleSolar.solarPanels.filter(p => {
-              if (p.segmentIndex !== pan.solarSegmentIdx) return true;
-              const pLat = p.center?.latitude, pLng = p.center?.longitude;
-              return pLat != null && pLng != null && !isInExcludedCell(pLat, pLng);
-            })
-          : googleSolar.solarPanels;
         const g = buildPanelsFromGoogleSolar(
-          segPanels, pan.solarSegmentIdx,
+          googleSolar.solarPanels, pan.solarSegmentIdx,
           pan.azimut ?? 180, gWm, gHm,
         );
-        grid = g.panels;
-        max  = g.max;
-        // Production annuelle cumulée des panneaux conservés
-        for (const kwh of g.yearlyKwh) totalYearlyKwh += kwh;
+        // Filtre : retire les panneaux exclus (ordre identique à buildRoofGuideFeatures)
+        const keptPanels = [];
+        for (let j = 0; j < g.panels.length; j++) {
+          if (excludedPanelIds.has(`s${pan.solarSegmentIdx}-p${j}`)) continue;
+          keptPanels.push(g.panels[j]);
+          totalYearlyKwh += g.yearlyKwh[j] || 0;
+        }
+        grid = keptPanels;
+        max  = keptPanels.length;
       } else {
         const g = buildPanelGridRotated(
           pan.coords, panelW, panelH, 9999, orientation,
@@ -902,19 +877,22 @@ function MapController({
   }, [pans, panel, orientation, gridVersion]);
   useEffect(() => { if (drawRef.current) drawRef.current.options.styles = makeDrawStyles(currentPanIndex); }, [currentPanIndex]);
 
-  // Reset grille au changement d'adresse
+  // Reset exclusions au changement d'adresse
   useEffect(() => {
     fluxLoadedRef.current = false;
-    gridDataRef.current   = null;
-    excludedRef.current   = new Set();
+    excludedPanelsRef.current = new Set();
+    if (fluxBlobUrlRef.current) {
+      URL.revokeObjectURL(fluxBlobUrlRef.current);
+      fluxBlobUrlRef.current = null;
+    }
   }, [address]);
 
-  // Toggle "Flux solaire" : fetch grille + rendu cellules + visibilité
+  // Toggle "Flux solaire" (overlay PNG optionnel, séparé des panneaux)
   useEffect(() => {
     if (!map || !coords) return;
     const mbMap = map.getMap();
-    const src   = mbMap.getSource("flux-grid");
-    const layer = "flux-grid-fill";
+    const src   = mbMap.getSource("solar-flux");
+    const layer = "solar-flux-layer";
     if (!src || !mbMap.getLayer(layer)) return;
 
     const vis = showFlux ? "visible" : "none";
@@ -928,52 +906,32 @@ function MapController({
     setFluxLoading?.(true);
     (async () => {
       try {
-        const r = await fetch("/api/solar-grid", {
+        const r = await fetch("/api/solar-flux", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lat: coords.lat, lon: coords.lon, radiusMeters: 50, cellSizeMeters: 1.0 }),
+          body: JSON.stringify({ lat: coords.lat, lon: coords.lon, radiusMeters: 50 }),
         });
         if (!r.ok) {
           const b = await r.json().catch(() => ({}));
           throw new Error(`HTTP ${r.status}: ${b.error || ""}`);
         }
-        const data = await r.json();
-        const { cells, cellSizeMeters, minFlux, maxFlux } = data;
-        if (!cells?.length) throw new Error("Aucune cellule flux retournée");
-        gridDataRef.current = { cells, cellSizeMeters, minFlux, maxFlux };
-        excludedRef.current = new Set();
-
-        // Conversion cellules → polygones GeoJSON (carrés GPS)
-        const range = Math.max(1, maxFlux - minFlux);
-        const mPerDegLat = 110540;
-        const features = cells.map(c => {
-          const mPerDegLng = 111320 * Math.cos((c.lat * Math.PI) / 180);
-          const hLat = (cellSizeMeters / 2) / mPerDegLat;
-          const hLng = (cellSizeMeters / 2) / mPerDegLng;
-          return {
-            type: "Feature",
-            id: c.id,
-            properties: {
-              id: c.id,
-              flux: c.flux,
-              norm: Math.max(0, Math.min(1, (c.flux - minFlux) / range)),
-            },
-            geometry: {
-              type: "Polygon",
-              coordinates: [[
-                [c.lng - hLng, c.lat - hLat],
-                [c.lng + hLng, c.lat - hLat],
-                [c.lng + hLng, c.lat + hLat],
-                [c.lng - hLng, c.lat + hLat],
-                [c.lng - hLng, c.lat - hLat],
-              ]],
-            },
-          };
+        const boundsHdr = r.headers.get("X-Bounds");
+        if (!boundsHdr) throw new Error("X-Bounds manquant");
+        const [swLat, swLon, neLat, neLon] = boundsHdr.split(",").map(Number);
+        const blob = await r.blob();
+        const url  = URL.createObjectURL(blob);
+        if (fluxBlobUrlRef.current) URL.revokeObjectURL(fluxBlobUrlRef.current);
+        fluxBlobUrlRef.current = url;
+        src.updateImage({
+          url,
+          coordinates: [
+            [swLon, neLat], [neLon, neLat],
+            [neLon, swLat], [swLon, swLat],
+          ],
         });
-        src.setData({ type: "FeatureCollection", features });
         onFluxReady?.();
       } catch (e) {
-        console.warn("[solar-grid]", e.message);
+        console.warn("[solar-flux]", e.message);
         fluxLoadedRef.current = false;
       } finally {
         setFluxLoading?.(false);
@@ -981,26 +939,37 @@ function MapController({
     })();
   }, [map, coords, showFlux]);
 
-  // Click sur cellule → toggle exclusion via feature-state
+  // Click sur un panneau guide → toggle exclusion individuelle
   useEffect(() => {
     if (!map) return;
     const mbMap = map.getMap();
     const onClick = (e) => {
-      if (!showFlux) return;
-      const feats = mbMap.queryRenderedFeatures(e.point, { layers: ["flux-grid-fill"] });
+      const feats = mbMap.queryRenderedFeatures(e.point, { layers: ["bdtopo-guide-fill"] });
       if (!feats?.length) return;
-      const id = feats[0].properties?.id;
+      // Ne réagit qu'aux panneaux Solar (pas au footprint BDTOPO)
+      const f = feats.find(x => x.properties?.kind === "solar-panel");
+      if (!f) return;
+      const id = f.properties.id;
       if (!id) return;
-      const excluded = excludedRef.current.has(id);
-      if (excluded) excludedRef.current.delete(id);
-      else          excludedRef.current.add(id);
-      mbMap.setFeatureState({ source: "flux-grid", id }, { excluded: !excluded });
-      setExcludedCount?.(excludedRef.current.size);
-      setGridVersion(v => v + 1);   // déclenche updatePanelsOnMap (filtre panneaux)
+      const excluded = excludedPanelsRef.current.has(id);
+      if (excluded) excludedPanelsRef.current.delete(id);
+      else          excludedPanelsRef.current.add(id);
+      mbMap.setFeatureState({ source: "bdtopo-guide", id }, { excluded: !excluded });
+      setExcludedCount?.(excludedPanelsRef.current.size);
+      setGridVersion(v => v + 1);
     };
-    mbMap.on("click", "flux-grid-fill", onClick);
-    return () => mbMap.off("click", "flux-grid-fill", onClick);
-  }, [map, showFlux]);
+    mbMap.on("click", "bdtopo-guide-fill", onClick);
+    // Curseur pointer sur les panneaux
+    const onEnter = () => { mbMap.getCanvas().style.cursor = "pointer"; };
+    const onLeave = () => { mbMap.getCanvas().style.cursor = ""; };
+    mbMap.on("mouseenter", "bdtopo-guide-fill", onEnter);
+    mbMap.on("mouseleave", "bdtopo-guide-fill", onLeave);
+    return () => {
+      mbMap.off("click",      "bdtopo-guide-fill", onClick);
+      mbMap.off("mouseenter", "bdtopo-guide-fill", onEnter);
+      mbMap.off("mouseleave", "bdtopo-guide-fill", onLeave);
+    };
+  }, [map]);
 
   useEffect(() => {
     if (!map) return;
@@ -1104,8 +1073,8 @@ function MapController({
           return prev.filter(p => p.solarSegmentIdx !== segIdx);
         });
       },
-      // Place un pan par segment Solar API non-Nord — panneaux filtrés par la grille
-      placeFromGrid: async () => {
+      // Génère un pan par segment Solar API non-Nord — panneaux exclus non rendus
+      generatePanels: async () => {
         const segs = solarDataRef.current?.solarPotential?.roofSegmentStats;
         if (!segs?.length) return;
         for (let i = 0; i < segs.length; i++) {
@@ -1113,7 +1082,6 @@ function MapController({
           if (isNorthFacingSegment(seg)) continue;
           window.__smActions?.addSolarPan?.(seg, i);
         }
-        // La mise à jour visuelle se fait via updatePanelsOnMap (gridVersion déjà présent)
         setGridVersion(v => v + 1);
       },
       resetView:     (c) => { if (c) mbMap.flyTo({ center: [c.lon, c.lat], zoom: 20, pitch: 45, bearing: 0, duration: 800 }); },
@@ -1320,30 +1288,30 @@ export default function SatelliteMap({
           </button>
         )}
         {solarReady && (
-          <Button size="sm" variant="outline"
-            onClick={() => setShowFlux(v => !v)}
-            disabled={fluxLoading && !fluxReady}
-            className={showFlux
-              ? "border-orange-500/50 text-orange-400 bg-orange-500/10 hover:bg-orange-500/20"
-              : "border-orange-500/30 text-orange-300/80 hover:bg-orange-500/10"}
-            title="Grille flux solaire annuel (cellules cliquables pour exclure des zones)"
-          >
-            <Flame className="w-4 h-4 mr-1" />
-            {fluxLoading && !fluxReady ? "Chargement grille…" : (showFlux ? "Flux solaire ●" : "Flux solaire")}
-          </Button>
-        )}
-        {showFlux && fluxReady && (
           <>
             <Button size="sm" variant="outline"
-              onClick={() => act("placeFromGrid")}
+              onClick={() => act("generatePanels")}
               className="border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/15"
-              title="Place automatiquement les panneaux sur les cellules non exclues"
+              title="Créer les pans pour tous les segments non-Nord (les panneaux exclus sont ignorés)"
             >
-              <Plus className="w-4 h-4 mr-1" /> Placer les panneaux
+              <Plus className="w-4 h-4 mr-1" /> Générer les panneaux
             </Button>
-            <span className="text-xs px-2.5 py-1 rounded-full bg-orange-500/10 border border-orange-500/30 text-orange-300">
-              {excludedCount} cellule{excludedCount > 1 ? "s" : ""} exclue{excludedCount > 1 ? "s" : ""}
-            </span>
+            <Button size="sm" variant="outline"
+              onClick={() => setShowFlux(v => !v)}
+              disabled={fluxLoading && !fluxReady}
+              className={showFlux
+                ? "border-orange-500/50 text-orange-400 bg-orange-500/10 hover:bg-orange-500/20"
+                : "border-orange-500/30 text-orange-300/80 hover:bg-orange-500/10"}
+              title="Superpose la heatmap d'ensoleillement annuel (Google Solar API)"
+            >
+              <Flame className="w-4 h-4 mr-1" />
+              {fluxLoading && !fluxReady ? "Chargement flux…" : (showFlux ? "Flux solaire ●" : "Flux solaire")}
+            </Button>
+            {excludedCount > 0 && (
+              <span className="text-xs px-2.5 py-1 rounded-full bg-gray-500/10 border border-gray-500/30 text-gray-300">
+                {excludedCount} panneau{excludedCount > 1 ? "x exclus" : " exclu"}
+              </span>
+            )}
             {placementStats.totalPanels > 0 && (
               <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono">
                 {placementStats.totalPanels} panneaux · {Math.round(placementStats.totalPanels * (panel?.power_wc || 410) / 10) / 100} kWc · {placementStats.totalYearlyKwh} kWh/an

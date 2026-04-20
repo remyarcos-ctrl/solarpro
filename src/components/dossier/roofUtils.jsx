@@ -163,9 +163,11 @@ export function buildRoofGuideFeatures(solarData) {
         panels, i, az, GUIDE_PANEL_W_M, GUIDE_PANEL_H_M,
       );
       for (let j = 0; j < rects.length; j++) {
+        const id = `s${i}-p${j}`;
         features.push({
           type: "Feature",
-          properties: { kind: "solar-panel", segIdx: i, panelIdx: j },
+          id, // accessible via promoteId pour feature-state
+          properties: { id, kind: "solar-panel", segIdx: i, panelIdx: j },
           geometry: { type: "Polygon", coordinates: [rects[j]] },
         });
       }
