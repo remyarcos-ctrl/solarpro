@@ -29,3 +29,6 @@ dist-ssr
 
 .env
 .vite
+
+# Claude Code local
+.claude/settings.local.json
