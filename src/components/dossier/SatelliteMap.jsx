@@ -4,7 +4,7 @@ import Map, { useMap } from "react-map-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
-import { MapPin, Pencil, Trash2, RotateCcw, Layers, Plus, Building2, Flame } from "lucide-react";
+import { MapPin, Pencil, Trash2, RotateCcw, Layers, Plus, Flame } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import SolarRoofDetector from "@/components/dossier/SolarRoofDetector";
 import * as turf from "@turf/turf";
@@ -319,7 +319,7 @@ function MapController({
   onRoofAreaChange, onMaxPanelsChange, onCaptureReady,
   onRoofDimensionsChange, solarDataRef, onDataReady, onSolarReady,
   onAIPansDetected, onAIValidateReady,
-  onFluxReady, showFlux, fluxLoading, setFluxLoading,
+  onFluxReady, onFluxError, showFlux, fluxLoading, setFluxLoading,
   setExcludedCount, onPlaceFromGrid,
 }) {
   const { current: map } = useMap();
@@ -515,20 +515,9 @@ function MapController({
       mbMap.addLayer({ id: "panels-fill", type: "fill", source: "panels-multi", paint: { "fill-color": ["get", "fillColor"], "fill-opacity": 0.92 } });
       mbMap.addLayer({ id: "panels-line", type: "line", source: "panels-multi", paint: { "line-color": ["get", "lineColor"], "line-width": 1.2 } });
     }
-    if (!mbMap.getSource("solar-flux")) {
-      // Overlay heatmap PNG (toggle séparé "Flux solaire"). Source image
-      // initialisée vide, url + bounds fournis au 1er clic du bouton.
-      mbMap.addSource("solar-flux", {
-        type: "image",
-        url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
-        coordinates: [[0,0],[0,0],[0,0],[0,0]],
-      });
-      mbMap.addLayer({
-        id: "solar-flux-layer", type: "raster", source: "solar-flux",
-        layout: { visibility: "none" },
-        paint: { "raster-opacity": 0.60, "raster-fade-duration": 0 },
-      });
-    }
+    // La source "solar-flux" est créée à la volée au 1er chargement réussi
+    // (voir useEffect showFlux). Pas de placeholder dégénéré qui empêchait
+    // Mapbox de peindre correctement après updateImage.
     if (!mbMap.getSource("bdtopo-guide")) {
       mbMap.addSource("bdtopo-guide", {
         type: "geojson",
@@ -893,51 +882,73 @@ function MapController({
     }
   }, [address]);
 
-  // Toggle "Flux solaire" (overlay PNG optionnel, séparé des panneaux)
+  // Toggle "Flux solaire" — source image créée à la volée au 1er chargement
   useEffect(() => {
     if (!map || !coords) return;
     const mbMap = map.getMap();
-    const src   = mbMap.getSource("solar-flux");
-    const layer = "solar-flux-layer";
-    if (!src || !mbMap.getLayer(layer)) return;
+    const layerId = "solar-flux-layer";
 
-    const vis = showFlux ? "visible" : "none";
-    if (mbMap.getLayoutProperty(layer, "visibility") !== vis) {
-      mbMap.setLayoutProperty(layer, "visibility", vis);
+    // Toggle visibilité si déjà chargé
+    if (mbMap.getLayer(layerId)) {
+      mbMap.setLayoutProperty(layerId, "visibility", showFlux ? "visible" : "none");
     }
-    if (!showFlux) return;
-    if (fluxLoadedRef.current) return;
+    if (!showFlux || fluxLoadedRef.current) return;
 
     fluxLoadedRef.current = true;
     setFluxLoading?.(true);
+    onFluxError?.(null);
+
     (async () => {
       try {
+        console.log("[flux] fetch /api/solar-flux", coords);
         const r = await fetch("/api/solar-flux", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ lat: coords.lat, lon: coords.lon, radiusMeters: 50 }),
         });
         if (!r.ok) {
-          const b = await r.json().catch(() => ({}));
-          throw new Error(`HTTP ${r.status}: ${b.error || ""}`);
+          let msg = `HTTP ${r.status}`;
+          try {
+            const b = await r.clone().json();
+            if (b?.error) msg += " — " + b.error;
+          } catch {
+            try { msg += " — " + (await r.clone().text()).slice(0, 120); } catch {}
+          }
+          throw new Error(msg);
         }
         const boundsHdr = r.headers.get("X-Bounds");
-        if (!boundsHdr) throw new Error("X-Bounds manquant");
+        if (!boundsHdr) throw new Error("Headers X-Bounds manquant (response malformée)");
         const [swLat, swLon, neLat, neLon] = boundsHdr.split(",").map(Number);
+        if (![swLat, swLon, neLat, neLon].every(Number.isFinite)) {
+          throw new Error(`X-Bounds invalide: ${boundsHdr}`);
+        }
         const blob = await r.blob();
-        const url  = URL.createObjectURL(blob);
+        if (blob.size < 100) throw new Error(`Image vide (${blob.size} bytes)`);
+        const url = URL.createObjectURL(blob);
         if (fluxBlobUrlRef.current) URL.revokeObjectURL(fluxBlobUrlRef.current);
         fluxBlobUrlRef.current = url;
-        src.updateImage({
-          url,
-          coordinates: [
-            [swLon, neLat], [neLon, neLat],
-            [neLon, swLat], [swLon, swLat],
-          ],
-        });
+
+        const coordsArr = [
+          [swLon, neLat], [neLon, neLat],
+          [neLon, swLat], [swLon, swLat],
+        ];
+        console.log("[flux] image reçue", { size: blob.size, bounds: { swLat, swLon, neLat, neLon } });
+
+        // Création à la volée (pas de placeholder dégénéré)
+        if (!mbMap.getSource("solar-flux")) {
+          mbMap.addSource("solar-flux", { type: "image", url, coordinates: coordsArr });
+          mbMap.addLayer({
+            id: layerId, type: "raster", source: "solar-flux",
+            paint: { "raster-opacity": 0.65, "raster-fade-duration": 0 },
+          });
+        } else {
+          mbMap.getSource("solar-flux").updateImage({ url, coordinates: coordsArr });
+          mbMap.setLayoutProperty(layerId, "visibility", "visible");
+        }
         onFluxReady?.();
       } catch (e) {
-        console.warn("[solar-flux]", e.message);
+        console.error("[solar-flux]", e.message);
+        onFluxError?.(e.message);
         fluxLoadedRef.current = false;
       } finally {
         setFluxLoading?.(false);
@@ -1203,6 +1214,7 @@ export default function SatelliteMap({
   const [fluxReady,   setFluxReady]   = useState(false);
   const [showFlux,    setShowFlux]    = useState(false);
   const [fluxLoading, setFluxLoading] = useState(false);
+  const [fluxError,   setFluxError]   = useState(null);
   const [excludedCount, setExcludedCount] = useState(0);
   const [placementStats, setPlacementStats] = useState({ totalPanels: 0, totalYearlyKwh: 0 });
   const solarDataRef = useRef(null);
@@ -1220,6 +1232,7 @@ export default function SatelliteMap({
     setFluxReady(false);
     setShowFlux(false);
     setFluxLoading(false);
+    setFluxError(null);
     setExcludedCount(0);
     setPlacementStats({ totalPanels: 0, totalYearlyKwh: 0 });
   }, [address]);
@@ -1292,12 +1305,6 @@ export default function SatelliteMap({
           </Button>
         )}
         {coords && <Button size="sm" variant="outline" onClick={() => act("resetView", coords)} title="Recentrer"><RotateCcw className="w-4 h-4" /></Button>}
-        {bdtopoBuilding && !isDrawing && (
-          <Button size="sm" variant="outline" onClick={() => act("autoTrace")}
-            className="border-sky-500/50 text-sky-400 hover:bg-sky-500/10">
-            <Building2 className="w-4 h-4 mr-1" /> Tracer le b&#226;timent IGN
-          </Button>
-        )}
         <Button size="sm" variant="outline" onClick={() => act("toggleLabels", !showLabels)}>
           <Layers className="w-4 h-4 mr-1" />{showLabels ? "Sans labels" : "+ Labels rues"}
         </Button>
@@ -1334,6 +1341,11 @@ export default function SatelliteMap({
             {excludedCount > 0 && (
               <span className="text-xs px-2.5 py-1 rounded-full bg-gray-500/10 border border-gray-500/30 text-gray-300">
                 {excludedCount} panneau{excludedCount > 1 ? "x exclus" : " exclu"}
+              </span>
+            )}
+            {fluxError && (
+              <span className="text-xs px-2.5 py-1 rounded-full bg-red-500/15 border border-red-500/30 text-red-300 max-w-xs truncate" title={fluxError}>
+                ⚠️ Flux : {fluxError}
               </span>
             )}
             {placementStats.totalPanels > 0 && (
@@ -1547,6 +1559,7 @@ export default function SatelliteMap({
             solarDataRef={solarDataRef} onDataReady={() => setDataReady(true)}
             onSolarReady={(segs) => { setSolarReady(true); setSolarSegments(segs || []); }}
             onFluxReady={() => setFluxReady(true)}
+            onFluxError={setFluxError}
             showFlux={showFlux} fluxLoading={fluxLoading} setFluxLoading={setFluxLoading}
             setExcludedCount={setExcludedCount}
             onPlaceFromGrid={setPlacementStats}
