@@ -367,8 +367,9 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
   }
 
   // ── CO2 évité ─────────────────────────────────────────────────────────
-  // Mix électrique France : ~52g CO2/kWh (2024, RTE)
-  const co2SavedKg = Math.round(annualProduction * 25 * 0.052);
+  // Facteur réel France depuis RTE eCO2mix (fallback 52 g CO2/kWh ADEME 2024)
+  const co2KgPerKwh = settings.co2_kg_per_kwh ?? 0.052;
+  const co2SavedKg  = Math.round(annualProduction * 25 * co2KgPerKwh);
 
   return {
     // Production

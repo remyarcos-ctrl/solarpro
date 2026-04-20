@@ -17,6 +17,7 @@ import ExportPdfButton from "@/components/dossier/ExportPdfButton";
 import SolarAI from "@/components/dossier/SolarAI";
 import { fetchPVGISData, fetchRegionalAids, fetchEDFPrice } from "@/lib/pvgisApi";
 import { estimateConsumption } from "@/lib/consumptionEstimate";
+import { fetchCO2Factor } from "@/lib/gridData";
 import ScenarioComparator from "@/components/dossier/ScenarioComparator";
 
 export default function DossierDetail() {
@@ -32,6 +33,7 @@ export default function DossierDetail() {
   const [coords, setCoords]       = useState(null);
   const [consoEstimate, setConsoEstimate] = useState(null);
   const [consoLoading,  setConsoLoading]  = useState(false);
+  const [co2Factor,     setCo2Factor]     = useState(null);
 
   const { isLoading } = useQuery({
     queryKey: ["client", clientId],
@@ -53,6 +55,12 @@ export default function DossierDetail() {
     window.__smCoords = null;
     window.__smPans   = null;
   }, [clientId]);
+
+  // Facteur CO2 réel France (RTE eCO2mix, moyenne 12 mois) — cache 7j
+  useEffect(() => {
+    if (co2Factor) return;
+    fetchCO2Factor().then(setCo2Factor);
+  }, []);
 
   // Estimation auto de la conso à partir de l'adresse (ADEME DPE + ENEDIS)
   useEffect(() => {
@@ -97,10 +105,10 @@ export default function DossierDetail() {
     const base = pvgisData
       ? { ...settings, regional_production: pvgisData.annualKwhPerKwc, pvgisSource: pvgisData.pvgisSource }
       : { ...settings };
-    // Override tarif par dossier si saisi
     if (data?.tariff_type) base.tariff_type = data.tariff_type;
+    if (co2Factor?.kgPerKwh) base.co2_kg_per_kwh = co2Factor.kgPerKwh;
     return base;
-  }, [settings, pvgisData, data?.tariff_type]);
+  }, [settings, pvgisData, data?.tariff_type, co2Factor]);
 
   const profitability = useMemo(() => {
     if (!data?.panel_count || !selectedPanel || !settings) return null;
