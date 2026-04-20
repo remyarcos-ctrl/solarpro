@@ -4,11 +4,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Zap, Home, Battery } from "lucide-react";
+import { Zap, Home, Battery, Sparkles, Loader2 } from "lucide-react";
 
 // Édite la conso annuelle, le profil, le tarif EDF et l'option batterie.
-// Ces données pilotent l'autoconso mensuelle réelle (au lieu du 70 % fixe).
-export default function ConsumptionConfigurator({ data, onChange, settings, onSettingsChange }) {
+// Affiche aussi les suggestions ADEME DPE + ENEDIS si disponibles.
+export default function ConsumptionConfigurator({ data, onChange, settings, onSettingsChange, consoEstimate, consoLoading }) {
   const consumption = data?.annual_consumption_kwh ?? "";
   const profile     = data?.consumption_profile    ?? "standard";
   const hasBattery  = !!data?.has_battery;
@@ -24,6 +24,47 @@ export default function ConsumptionConfigurator({ data, onChange, settings, onSe
         </h3>
         <span className="text-xs text-muted-foreground">Pilote le calcul d'autoconsommation réelle</span>
       </div>
+
+      {/* Suggestions auto depuis ADEME DPE + ENEDIS */}
+      {(consoLoading || consoEstimate?.suggestion || consoEstimate?.dpe || consoEstimate?.enedis) && (
+        <div className="rounded-lg border border-violet-500/30 bg-violet-500/5 p-3 space-y-2">
+          <div className="flex items-center gap-2 text-xs text-violet-300 font-semibold">
+            {consoLoading
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Estimation automatique…</>
+              : <><Sparkles className="w-3.5 h-3.5" /> Estimations trouvées</>}
+          </div>
+          {consoEstimate?.dpe && (
+            <button type="button"
+              onClick={() => onChange({ annual_consumption_kwh: consoEstimate.dpe.consoElecEstKwh })}
+              className="w-full text-left text-xs px-2.5 py-2 rounded-md bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-emerald-300">ADEME DPE {consoEstimate.dpe.etiquette || ''}</span>
+                <span className="font-mono text-emerald-300">{consoEstimate.dpe.consoElecEstKwh} kWh/an</span>
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                {consoEstimate.dpe.surface} m² · chauffage {consoEstimate.dpe.chauffage || '—'}
+                {consoEstimate.dpe.chauffageElec ? ' (100 % élec)' : ' (part élec estimée 30 %)'}
+              </div>
+            </button>
+          )}
+          {consoEstimate?.enedis && (
+            <button type="button"
+              onClick={() => onChange({ annual_consumption_kwh: consoEstimate.enedis.consoMoyKwh })}
+              className="w-full text-left text-xs px-2.5 py-2 rounded-md bg-sky-500/10 border border-sky-500/30 hover:bg-sky-500/20 transition">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-sky-300">ENEDIS — moyenne quartier</span>
+                <span className="font-mono text-sky-300">{consoEstimate.enedis.consoMoyKwh} kWh/an</span>
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                {consoEstimate.enedis.adresse} · {consoEstimate.enedis.nbLogements || '?'} logements
+              </div>
+            </button>
+          )}
+          {!consoLoading && !consoEstimate?.dpe && !consoEstimate?.enedis && (
+            <div className="text-[11px] text-muted-foreground">Aucune donnée publique trouvée pour cette adresse — saisir manuellement la conso annuelle.</div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>

@@ -10,8 +10,13 @@ export const DEFAULT_SETTINGS = {
   self_consumption_rate:    70,     // utilisé uniquement si pas de conso client
   inflation_rate:           5,
   degradation_rate:         0.4,
-  prime_per_kwc:            380,
+  prime_per_kwc:            380,   // palier < 3 kWc (barème S21 2025)
+  prime_per_kwc_9:          290,   // palier 3-9 kWc
+  prime_per_kwc_36:         180,   // palier 9-36 kWc
+  prime_per_kwc_100:        90,    // palier 36-100 kWc
   installation_cost_per_wc: 2.5,
+  inverter_replacement_year: 13,   // remplacement onduleur attendu
+  inverter_cost_per_kwc:    300,   // coût remplacement par kWc
   battery_cost_per_kwh:     700,    // ~€ / kWh de batterie (pose incl.)
   company_name:             "SolarPro",
   company_address:          "",
@@ -315,11 +320,11 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
   const batteryCost   = Math.round(batteryKwh * (settings.battery_cost_per_kwh || 700));
   const totalCost     = panelCost + installCost + batteryCost;
 
-  // Prime selon puissance installée (barème 2025)
-  const primePerKwc = totalKwc < 3  ? (settings.prime_per_kwc || 380)
-                    : totalKwc < 9  ? 290
-                    : totalKwc < 36 ? 180
-                    : 90;
+  // Prime selon puissance installée (barème paramétrable dans Settings)
+  const primePerKwc = totalKwc < 3  ? (settings.prime_per_kwc     ?? 380)
+                    : totalKwc < 9  ? (settings.prime_per_kwc_9   ?? 290)
+                    : totalKwc < 36 ? (settings.prime_per_kwc_36  ?? 180)
+                    :                 (settings.prime_per_kwc_100 ?? 90);
   const primeAutoConsommation = Math.round(primePerKwc * totalKwc);
   const resteACharge          = Math.max(0, totalCost - primeAutoConsommation);
 
@@ -334,9 +339,9 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
   const projections = [];
   let cumulativeGains = -resteACharge;
 
-  // Remplacement onduleur à l'année 13 (~1800 € pour 6 kWc, prorata puissance)
-  const inverterReplacementYear = 13;
-  const inverterReplacementCost = Math.round(totalKwc * 300);
+  // Remplacement onduleur à l'année N (paramétrable)
+  const inverterReplacementYear = settings.inverter_replacement_year ?? 13;
+  const inverterReplacementCost = Math.round(totalKwc * (settings.inverter_cost_per_kwc ?? 300));
 
   for (let year = 1; year <= 25; year++) {
     const degradFactor = Math.pow(1 - degradationRate, year - 1);

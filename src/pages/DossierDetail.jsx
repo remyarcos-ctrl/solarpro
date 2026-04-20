@@ -16,6 +16,7 @@ import ProfitabilityStudy from "@/components/dossier/ProfitabilityStudy";
 import ExportPdfButton from "@/components/dossier/ExportPdfButton";
 import SolarAI from "@/components/dossier/SolarAI";
 import { fetchPVGISData, fetchRegionalAids, fetchEDFPrice } from "@/lib/pvgisApi";
+import { estimateConsumption } from "@/lib/consumptionEstimate";
 import ScenarioComparator from "@/components/dossier/ScenarioComparator";
 
 export default function DossierDetail() {
@@ -29,6 +30,8 @@ export default function DossierDetail() {
   const [aidData, setAidData]     = useState(null);
   const [pans, setPans]           = useState([]);
   const [coords, setCoords]       = useState(null);
+  const [consoEstimate, setConsoEstimate] = useState(null);
+  const [consoLoading,  setConsoLoading]  = useState(false);
 
   const { isLoading } = useQuery({
     queryKey: ["client", clientId],
@@ -46,9 +49,22 @@ export default function DossierDetail() {
     setAidData(null);
     setCoords(null);
     setPans([]);
+    setConsoEstimate(null);
     window.__smCoords = null;
     window.__smPans   = null;
   }, [clientId]);
+
+  // Estimation auto de la conso à partir de l'adresse (ADEME DPE + ENEDIS)
+  useEffect(() => {
+    if (!data?.address || consoEstimate) return;
+    setConsoLoading(true);
+    estimateConsumption(data.address)
+      .then(res => {
+        setConsoEstimate(res);
+        if (res.suggestion) toast.success(`🏠 Conso estimée : ${res.suggestion.value} kWh/an — ${res.suggestion.source}`);
+      })
+      .finally(() => setConsoLoading(false));
+  }, [data?.address]);
 
   // Polling pans/coords depuis SatelliteMap
   useEffect(() => {
@@ -201,6 +217,8 @@ export default function DossierDetail() {
             onChange={(patch) => setData(d => ({ ...d, ...patch }))}
             settings={settingsWithPVGIS}
             onSettingsChange={(patch) => setData(d => ({ ...d, ...patch }))}
+            consoEstimate={consoEstimate}
+            consoLoading={consoLoading}
           />
           <div className="rounded-xl bg-card border border-border p-6">
             <h2 className="text-lg font-semibold mb-4">Orientation panneaux</h2>
