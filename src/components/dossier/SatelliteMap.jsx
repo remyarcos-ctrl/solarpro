@@ -446,7 +446,12 @@ function MapController({
     // PVGIS par pan — fire and forget (orientation + inclinaison réelles)
     fetchPVGISForPan(cLat, cLon, azimut, inclination).then(pvgis => {
       setPans(prev => prev.map(p => p.id === panId
-        ? { ...p, pvgisKwhPerKwc: pvgis?.annualKwhPerKwc ?? null, pvgisLoading: false }
+        ? {
+            ...p,
+            pvgisKwhPerKwc: pvgis?.annualKwhPerKwc ?? null,
+            pvgisPR:        pvgis?.pr ?? 0.80,
+            pvgisLoading:   false,
+          }
         : p
       ));
     }).catch(() => {

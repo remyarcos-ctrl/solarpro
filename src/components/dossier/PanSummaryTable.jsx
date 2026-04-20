@@ -27,6 +27,9 @@ export default function PanSummaryTable({ pans, onUpdatePan, onDeletePan, panel,
   const elecPrice        = settings?.electricity_price || 0.2516;
   // pvgisSource présent → E_y inclut déjà pertes système + température
   const pvgisMode        = !!(pvgisData?.pvgisSource || settings?.pvgisSource);
+  // PR PVGIS réel (E_y / H(i)_y) — fallback 0.80. Un bon système France = 75-85 %.
+  const DEFAULT_PR       = 0.80;
+  const globalPvgisPR    = pvgisData?.pr ?? DEFAULT_PR;
 
   // Pertes système fixes (utilisées uniquement en mode fallback)
   const cableFactor    = 0.97;
@@ -43,10 +46,15 @@ export default function PanSummaryTable({ pans, onUpdatePan, onDeletePan, panel,
       : getShadingFactor(pan.shading || "none");
     const kwc     = ((pan.maxPanels || 0) * (panel?.power_wc || 0)) / 1000;
     if (pan.pvgisKwhPerKwc) {
-      return { prod: Math.round(kwc * pan.pvgisKwhPerKwc * shading), PR: shading, coef, shading };
+      // PVGIS par pan : prod inclut déjà orient+pitch+temp+pertes.
+      // Le PR RÉEL affiché = PR PVGIS (E_y/H(i)_y) × shading local.
+      const panPR = pan.pvgisPR ?? DEFAULT_PR;
+      return { prod: Math.round(kwc * pan.pvgisKwhPerKwc * shading), PR: panPR * shading, coef, shading };
     } else if (pvgisMode) {
-      const PR = coef * shading;
-      return { prod: Math.round(kwc * globalProdPerKwc * PR), PR, coef, shading };
+      // PVGIS global (Sud 30°) : orientCoef corrige l'orientation.
+      // PR réel = PR PVGIS × orientCoef × shading.
+      const PR = globalPvgisPR * coef * shading;
+      return { prod: Math.round(kwc * globalProdPerKwc * coef * shading), PR, coef, shading };
     }
     const PR = coef * shading * systemLoss;
     return { prod: Math.round(kwc * globalProdPerKwc * PR), PR, coef, shading };

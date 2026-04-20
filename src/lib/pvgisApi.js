@@ -129,9 +129,15 @@ export async function fetchPVGISData(lat, lon) {
       monthName: ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'][i],
     }));
 
+    // PR (Performance Ratio) PVGIS = E_y / H(i)_y  (kWh/kWp/an sur kWh/m²/an, G_STC=1 kW/m²)
+    // Typiquement 0.77–0.85 en France avec loss=14%. Fallback 0.80 si H indispo.
+    const H_iy = totals['H(i)_y'];
+    const pr   = (H_iy && H_iy > 0) ? (totals.E_y / H_iy) : 0.80;
+
     return {
       annualKwhPerKwc:  Math.round(totals.E_y),
-      annualIrradiance: Math.round(totals['H(i)_y'] || 0),
+      annualIrradiance: Math.round(H_iy || 0),
+      pr:               Math.round(pr * 1000) / 1000,
       monthlyProduction,
       optimalAngle: Math.max(15, Math.min(45, Math.round(lat * 0.76 - 3.1))),
       avgTemp,
@@ -156,9 +162,17 @@ export async function fetchPVGISForPan(lat, lon, azimut, inclination) {
     const angle  = Math.max(0, Math.min(60, Math.round(inclination || 0)));
     const url = pvgisUrl(`lat=${lat}&lon=${lon}&peakpower=1&loss=14&aspect=${aspect}&angle=${angle}&outputformat=json`);
     const d = await pvgisFetch(url);
-    const E_y = d?.outputs?.totals?.fixed?.E_y;
+    const totals = d?.outputs?.totals?.fixed;
+    const E_y  = totals?.E_y;
     if (!E_y) throw new Error('E_y absent');
-    return { annualKwhPerKwc: Math.round(E_y), source: 'PVGIS v5.2' };
+    const H_iy = totals['H(i)_y'];
+    const pr   = (H_iy && H_iy > 0) ? (E_y / H_iy) : 0.80;
+    return {
+      annualKwhPerKwc:  Math.round(E_y),
+      annualIrradiance: Math.round(H_iy || 0),
+      pr:               Math.round(pr * 1000) / 1000,
+      source:           'PVGIS v5.2',
+    };
   } catch (e) {
     console.warn('[PVGIS pan]', e.message);
     return null;

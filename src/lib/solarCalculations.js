@@ -96,6 +96,11 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
   const avgTemp       = pvgisData?.avgTemp || 12;
   const tempFactor    = getTempFactor(avgTemp);
 
+  // PR global PVGIS (E_y / H(i)_y), fallback 0.80 si indispo.
+  // Un système PV en France fait typiquement 75-85 % de PR réel.
+  const DEFAULT_PR     = 0.80;
+  const globalPvgisPR  = pvgisData?.pr ?? DEFAULT_PR;
+
   // Pertes système fixes (câblage, onduleur, salissures, dégradation an 1)
   const systemLoss = 0.97 * 0.96 * 0.97 * 0.98; // = ~0.883
 
@@ -122,15 +127,18 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
 
       let prod, prValue;
       if (pan.pvgisKwhPerKwc) {
-        // PVGIS par pan : orientation + temp + 14% pertes déjà dans E_y
+        // PVGIS par pan : orient + pitch + temp + 14 % pertes déjà dans E_y.
+        // Le PR RÉEL de ce pan = PR PVGIS (E_y/H(i)_y) × shadingCoef local.
+        const panPR = pan.pvgisPR ?? DEFAULT_PR;
         prod    = Math.round(kwc * pan.pvgisKwhPerKwc * shadingCoef);
-        prValue = Math.round(shadingCoef * 100);
+        prValue = Math.round(panPR * shadingCoef * 100);
       } else if (pvgisMode) {
-        // PVGIS global (réf. Sud 30°) : appliquer orientCoef mais pas systemLoss/tempFactor
+        // PVGIS global (réf. Sud 30°) : orientCoef corrige vers orientation réelle.
+        // PR réel = PR PVGIS × orientCoef × shadingCoef.
         prod    = Math.round(kwc * baseKwhPerKwc * orientCoef * shadingCoef);
-        prValue = Math.round(orientCoef * shadingCoef * 100);
+        prValue = Math.round(globalPvgisPR * orientCoef * shadingCoef * 100);
       } else {
-        // Fallback régional : formule complète
+        // Fallback régional : formule complète avec pertes système.
         const PR = orientCoef * shadingCoef * tempFactor * systemLoss;
         prod    = Math.round(kwc * baseKwhPerKwc * PR);
         prValue = Math.round(PR * 100);
@@ -166,9 +174,9 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
     // MODE SIMPLE : pas de pans tracés
     const totalKwc = (panelCount * panel.power_wc) / 1000;
     if (pvgisMode) {
-      // PVGIS : E_y déjà avec pertes — pas de double application
+      // PVGIS : E_y déjà avec pertes — PR = E_y / H(i)_y (réel, pas 86 % codé en dur)
       annualProduction = Math.round(totalKwc * baseKwhPerKwc);
-      avgPR = 86; // ≈ 1 - 14% pertes PVGIS
+      avgPR = Math.round(globalPvgisPR * 100);
     } else {
       annualProduction = Math.round(totalKwc * baseKwhPerKwc * systemLoss * tempFactor);
       avgPR = Math.round(systemLoss * tempFactor * 100);
