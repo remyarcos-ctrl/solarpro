@@ -292,19 +292,24 @@ export function buildPanelGridRotated(
     }
     if (orient === "paysage") { panels = paysage; bestPw = pwL; bestPh = phL; bestOrient = "paysage"; }
 
-    // ── 6. Reconversion GPS ───────────────────────────────────────────────
-    const gpsGrids = panels.slice(0, maxN).map(([x, y]) => {
-      const corners = [
-        toGPS(x,          y         ),
-        toGPS(x + bestPw, y         ),
-        toGPS(x + bestPw, y + bestPh),
-        toGPS(x,          y + bestPh),
-        toGPS(x,          y         ), // fermeture du ring
-      ];
-      return corners;
+    // ── 6. Reconversion GPS + filtre strict turf.booleanContains ─────────
+    const gpsGridsRaw = panels.slice(0, maxN).map(([x, y]) => [
+      toGPS(x,          y         ),
+      toGPS(x + bestPw, y         ),
+      toGPS(x + bestPw, y + bestPh),
+      toGPS(x,          y + bestPh),
+      toGPS(x,          y         ),
+    ]);
+
+    const gpsGrids = gpsGridsRaw.filter(corners => {
+      try {
+        return turf.booleanContains(polygon, turf.polygon([corners]));
+      } catch {
+        return false;
+      }
     });
 
-    return { panels: gpsGrids, max: panels.length, orient: bestOrient, panelW: bestPw, panelH: bestPh };
+    return { panels: gpsGrids, max: gpsGrids.length, orient: bestOrient, panelW: bestPw, panelH: bestPh };
   } catch (e) {
     console.error("buildPanelGridRotated:", e);
     return { panels: [], max: 0 };

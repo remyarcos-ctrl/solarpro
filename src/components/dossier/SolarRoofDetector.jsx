@@ -5,23 +5,26 @@ import { azimutToOrientation } from "./roofUtils";
 function visionEndpoint() { return '/api/roof-vision'; }
 function maskEndpoint()   { return '/api/solar-mask';  }
 
-// ── Fallback Vision-only : bounds pixel → GPS ────────────────────────────
+// ── Bounds GPS de l'image Mapbox Static (800×600 @ zoom 19) ─────────────
 function staticImageBounds(lat, lon, zoom = 19, w = 800, h = 600) {
   const mPerPx = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
-  const halfW = (w / 2) * mPerPx;
-  const halfH = (h / 2) * mPerPx;
+  const halfW  = (w / 2) * mPerPx;
+  const halfH  = (h / 2) * mPerPx;
+  const mPerDegLat = 110540;
+  const mPerDegLon = 111320 * Math.cos(lat * Math.PI / 180);
   return {
-    west:  lon - halfW / 111320,
-    east:  lon + halfW / 111320,
-    north: lat + halfH / 110540,
-    south: lat - halfH / 110540,
+    west:  lon - halfW / mPerDegLon,
+    east:  lon + halfW / mPerDegLon,
+    north: lat + halfH / mPerDegLat,
+    south: lat - halfH / mPerDegLat,
   };
 }
 
-function pixelsToGPS(coins, bounds, w = 800, h = 600) {
-  const ring = coins.map(({ x, y }) => [
-    bounds.west + (x / w) * (bounds.east - bounds.west),
-    bounds.north - (y / h) * (bounds.north - bounds.south),
+// Coordonnées en % (0-100) → anneau GPS fermé [[lon,lat], ...]
+function percentsToGPS(points, bounds) {
+  const ring = points.map(({ x, y }) => [
+    bounds.west  + (x / 100) * (bounds.east  - bounds.west),
+    bounds.north - (y / 100) * (bounds.north - bounds.south),
   ]);
   ring.push(ring[0]);
   return [ring];
@@ -83,16 +86,15 @@ Retourne UNIQUEMENT ce JSON (sans markdown) :
   return callVision(coords, prompt);
 }
 
-// ── Vision seule : pans + obstacles en pixels ────────────────────────────
+// ── Vision seule : pans en % de l'image (0-100) ──────────────────────────
 async function analyzeRoofWithVision(coords) {
-  const prompt = `Tu es un expert en détection de toiture solaire.
-Regarde cette image satellite. L'image fait 800x600 pixels.
-Pour chaque pan de toit visible (tuile rouge, ardoise grise, zinc), donne les coordonnées EXACTES en pixels des coins du polygone.
-Pour chaque obstacle visible (cheminée, lucarne, velux, antenne, conduit), donne aussi ses coins en pixels.
-Coordonnées : x=colonne, y=ligne depuis le coin haut-gauche.
+  const prompt = `Identifie tous les pans de toit visibles sur cette image satellite (tuile rouge, ardoise grise, zinc).
+Pour chacun, donne les coordonnées des 4 coins (ou plus) en POURCENTAGE de l'image (0-100).
+x = 0 à gauche, 100 à droite. y = 0 en haut, 100 en bas.
+Suis précisément les arêtes du toit — ne déborde pas au-delà du bâtiment.
 
-Retourne UNIQUEMENT ce JSON (sans markdown) :
-{"pans":[{"id":1,"nom":"Pan Sud-Est","azimut":135,"exploitable":true,"coins":[{"x":420,"y":310},{"x":580,"y":290},{"x":600,"y":420},{"x":440,"y":445}]}],"obstacles":[{"type":"cheminée","coins":[{"x":500,"y":380},{"x":520,"y":380},{"x":520,"y":400},{"x":500,"y":400}]}],"recommandation_generale":"...","confiance":85}`;
+Retourne UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
+{"pans":[{"pan":1,"points":[{"x":10,"y":20},{"x":40,"y":20},{"x":40,"y":60},{"x":10,"y":60}]}],"confiance":85}`;
 
   return callVision(coords, prompt);
 }
@@ -181,29 +183,25 @@ export default function SolarRoofDetector({ capturedImage, coords }) {
       } catch (maskErr) {
         console.warn('[solar-mask] fallback Vision-only:', maskErr.message);
 
-        // ── Fallback Vision seule (pixels → GPS) ─────────────────────
+        // ── Fallback Vision seule (% → GPS) ──────────────────────────
         const analysis = await analyzeRoofWithVision(coords);
         const bounds = staticImageBounds(coords.lat, coords.lon);
-        const exploitablePans = (analysis.pans || []).filter(p => p.exploitable && p.coins?.length >= 3);
-        const rawObstacles = (analysis.obstacles || []).filter(o => o.coins?.length >= 3);
+        const pans = (analysis.pans || []).filter(p => p.points?.length >= 3);
 
-        const obstaclesGPS = rawObstacles.map(o => ({
-          type: o.type || 'obstacle',
-          coords: pixelsToGPS(o.coins, bounds),
-        }));
-        if (obstaclesGPS.length > 0) window.__smActions?.showObstacles?.(obstaclesGPS);
-
-        const obstacleCoords = obstaclesGPS.map(o => o.coords);
-        for (const pan of exploitablePans) {
-          const polyCoords = pixelsToGPS(pan.coins, bounds);
-          if (polyCoords) await window.__smActions?.addAIPan?.(
+        const exploitablePans = [];
+        for (let i = 0; i < pans.length; i++) {
+          const p = pans[i];
+          const polyCoords = percentsToGPS(p.points, bounds);
+          if (!polyCoords) continue;
+          await window.__smActions?.addAIPan?.(
             polyCoords,
-            { azimut: pan.azimut, inclination: 30, obstacles: obstacleCoords }
+            { azimut: p.azimut ?? null, inclination: p.inclinaison ?? null, obstacles: [] }
           );
+          exploitablePans.push({ nom: `Pan ${p.pan ?? i + 1}`, azimut: p.azimut });
         }
 
         setMode('vision');
-        setResult({ ...analysis, exploitablePans });
+        setResult({ ...analysis, exploitablePans, confiance: analysis.confiance ?? 80 });
       }
 
       setStep("done");

@@ -398,19 +398,17 @@ function MapController({
     const panelW = (panel?.width_mm  > 0 ? panel.width_mm  : 1134) / 1000;
     const panelH = (panel?.height_mm > 0 ? panel.height_mm : 1722) / 1000;
     if (!panel) console.warn("[pan] panel non défini — utilisation dimensions par défaut 1134×1722mm");
-    const gridResult = buildPanelGridRotated(
-      polyCoords, panelW, panelH, 9999, orientation,
-      azimut, 0.20, 0.02, inclination, cLat, window.__smAIObstacles || []
-    );
-    const maxPanelsTraced = gridResult?.max ?? 0;
 
-    // Surface Solar API → max panneaux plus précis que le polygone tracé
-    const panAreaM2     = panelW * panelH;
+    // Formule unifiée : surface_m² / 1.94 × 0.80 (panneau 1.13×1.72, remplissage 80%)
+    const PANEL_AREA_M2 = 1.94;
+    const FILL_FACTOR   = 0.80;
+    const maxPanelsTraced = Math.floor((a / PANEL_AREA_M2) * FILL_FACTOR);
+
     const solarAreaM2   = bestSolarSeg?.stats?.areaMeters2
       ? Math.round(bestSolarSeg.stats.areaMeters2)
       : null;
     const maxPanelsSolar = solarAreaM2
-      ? Math.floor((solarAreaM2 * 0.85) / panAreaM2)
+      ? Math.floor((solarAreaM2 / PANEL_AREA_M2) * FILL_FACTOR)
       : null;
     const maxPanels = maxPanelsSolar ?? maxPanelsTraced;
 
@@ -444,17 +442,13 @@ function MapController({
         );
         const lidar = await Promise.race([analyzeRoofFromGPS(cLat, cLon), lidarTimeout]);
         if (lidar) {
-          const lidarGrid = buildPanelGridRotated(
-            polyCoords, panelW, panelH, 9999, orientation,
-            azimut, 0.20, 0.02, lidar.pitch, cLat, window.__smAIObstacles || []
-          );
-          const maxLidar = lidarGrid?.max ?? maxPanels;
+          // maxPanels = surface / 1.94 × 0.80 — indépendant du pitch LiDAR
           setPans(prev => prev.map(p => {
             if (p.id !== panId) return p;
             if (p.inclinationSource === 'solar_api') {
-              return { ...p, lidarSource: lidar.resource, lidarLoading: false, maxPanels: maxLidar };
+              return { ...p, lidarSource: lidar.resource, lidarLoading: false };
             }
-            return { ...p, inclination: lidar.pitch, inclinationSource: 'lidar', lidarSource: lidar.resource, lidarLoading: false, maxPanels: maxLidar };
+            return { ...p, inclination: lidar.pitch, inclinationSource: 'lidar', lidarSource: lidar.resource, lidarLoading: false };
           }));
         } else {
           setPans(prev => prev.map(p => p.id === panId ? { ...p, lidarLoading: false } : p));
@@ -1218,9 +1212,7 @@ export default function SatelliteMap({
                       const inc  = Math.round(seg.pitchDegrees ?? 0);
                       const area = Math.round(seg.stats?.areaMeters2 ?? 0);
                       const sun  = Math.round(seg.stats?.sunshineHoursPerYear ?? 0);
-                      const panelW = (panel?.width_mm  || 1134) / 1000;
-                      const panelH = (panel?.height_mm || 1722) / 1000;
-                      const maxP  = area > 0 ? Math.floor((area * 0.85) / (panelW * panelH)) : 0;
+                      const maxP  = area > 0 ? Math.floor((area / 1.94) * 0.80) : 0;
                       const ori   = azimutToOrientation(az);
                       const isSel = selectedSolarSegs.has(i);
                       return (
