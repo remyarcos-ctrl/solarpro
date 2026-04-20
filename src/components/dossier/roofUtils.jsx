@@ -132,6 +132,72 @@ export function detectPanOrientation(coordinates) {
   }
 }
 
+// ── Panneaux exacts depuis Google Solar API (buildingInsights.solarPanels) ─
+//
+// Chaque panneau retourné par Google a :
+//   - center : { latitude, longitude }  (GPS exact du centre)
+//   - orientation : "LANDSCAPE" | "PORTRAIT"
+//   - segmentIndex : index dans roofSegmentStats
+//   - yearlyEnergyDcKwh : production annuelle estimée
+//
+// On reconstruit les 4 coins en projetant le centre le long de deux axes :
+//   - ridge  : perpendiculaire à l'azimut du segment (parallèle au faîtage)
+//   - slope  : dans la direction de l'azimut (ligne de plus grande pente)
+//
+// Conventions :
+//   - azimut : degrés depuis le Nord, sens horaire (0=N, 90=E, 180=S, 270=O)
+//   - LANDSCAPE : long côté (panelHeightMeters) parallèle au faîtage
+//   - PORTRAIT  : long côté (panelHeightMeters) dans le sens de la pente
+//
+export function buildPanelsFromGoogleSolar(
+  solarPanels,
+  segmentIdx,
+  segmentAzimuthDeg,
+  panelWm = 1.0,
+  panelHm = 1.65,
+) {
+  if (!solarPanels?.length) return { panels: [], max: 0, yearlyKwh: [] };
+  const segPanels = segmentIdx == null
+    ? solarPanels
+    : solarPanels.filter(p => p.segmentIndex === segmentIdx);
+  if (!segPanels.length) return { panels: [], max: 0, yearlyKwh: [] };
+
+  const azRad   = ((segmentAzimuthDeg ?? 180) * Math.PI) / 180;
+  const slopeE  = Math.sin(azRad),  slopeN =  Math.cos(azRad);
+  const ridgeE  = Math.cos(azRad),  ridgeN = -Math.sin(azRad);
+
+  const mPerDegLat = 110540;
+  const signs = [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]];
+
+  const panels = [];
+  const yearlyKwh = [];
+  for (const p of segPanels) {
+    const lat = p.center?.latitude;
+    const lng = p.center?.longitude;
+    if (lat == null || lng == null) continue;
+
+    const mPerDegLng = 111320 * Math.cos((lat * Math.PI) / 180);
+    const sideRidge  = p.orientation === "PORTRAIT" ? panelWm : panelHm;
+    const sideSlope  = p.orientation === "PORTRAIT" ? panelHm : panelWm;
+
+    const corners = [];
+    for (const [sr, ss] of signs) {
+      const dR = (sr * sideRidge) / 2;
+      const dS = (ss * sideSlope) / 2;
+      const e  = ridgeE * dR + slopeE * dS;
+      const n  = ridgeN * dR + slopeN * dS;
+      corners.push([
+        lng + e / mPerDegLng,
+        lat + n / mPerDegLat,
+      ]);
+    }
+    panels.push(corners);
+    yearlyKwh.push(p.yearlyEnergyDcKwh ?? 0);
+  }
+
+  return { panels, max: panels.length, yearlyKwh };
+}
+
 // ── Grille de panneaux — strip packing en coordonnées métriques locales ───
 //
 // Algorithme :

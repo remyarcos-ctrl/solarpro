@@ -10,6 +10,7 @@ import SolarRoofDetector from "@/components/dossier/SolarRoofDetector";
 import * as turf from "@turf/turf";
 import {
   geocode, geojsonArea, buildPanelGridRotated, detectPanOrientation,
+  buildPanelsFromGoogleSolar,
   PAN_COLORS, getSolarCoefficient, getPanelColor, getBoundingBoxMeters,
   azimutToOrientation, snapToRings,
 } from "./roofUtils";
@@ -410,7 +411,17 @@ function MapController({
     const maxPanelsSolar = solarAreaM2
       ? Math.floor((solarAreaM2 / PANEL_AREA_M2) * FILL_FACTOR)
       : null;
-    const maxPanels = maxPanelsSolar ?? maxPanelsTraced;
+
+    // Nombre de panneaux EXACT depuis Google Solar API si le segment y figure
+    let maxPanelsGoogle = null;
+    if (forcedSegIdx != null) {
+      const sp = solarDataRef.current?.solarPotential?.solarPanels;
+      if (sp?.length > 0) {
+        maxPanelsGoogle = sp.filter(p => p.segmentIndex === forcedSegIdx).length || null;
+      }
+    }
+
+    const maxPanels = maxPanelsGoogle ?? maxPanelsSolar ?? maxPanelsTraced;
 
     const hasSolarInclination = !!(forcedSeg || solarDataRef.current?.solarPotential?.roofSegmentStats?.length > 0);
     setPans(prev => [...prev, {
@@ -731,6 +742,8 @@ function MapController({
     const currentPans = pansRef.current;
     let totalMax = 0;
 
+    const googleSolar = solarDataRef?.current?.solarPotential;
+
     currentPans.forEach(pan => {
       const coef   = getSolarCoefficient(pan.orientation, pan.inclination);
       const colors = getPanelColor(coef);
@@ -739,11 +752,29 @@ function MapController({
       const pts    = pan.coords[0] || [];
       const cLat   = pts.reduce((s, p) => s + p[1], 0) / (pts.length || 1);
 
-      const { panels: grid, max } = buildPanelGridRotated(
-        pan.coords, panelW, panelH, 9999, orientation,
-        pan.azimut ?? 180, 0.20, 0.02,
-        pan.inclination ?? 30, cLat || 46, pan.obstacles || [],
-      );
+      // ── Priorité : panneaux EXACTS de Google Solar API (buildingInsights.solarPanels) ──
+      let grid, max;
+      const hasGooglePanels = pan.solarSegmentIdx != null
+        && googleSolar?.solarPanels?.length > 0;
+
+      if (hasGooglePanels) {
+        const gWm = googleSolar.panelWidthMeters  || 1.0;
+        const gHm = googleSolar.panelHeightMeters || 1.65;
+        const g = buildPanelsFromGoogleSolar(
+          googleSolar.solarPanels, pan.solarSegmentIdx,
+          pan.azimut ?? 180, gWm, gHm,
+        );
+        grid = g.panels;
+        max  = g.max;
+      } else {
+        const g = buildPanelGridRotated(
+          pan.coords, panelW, panelH, 9999, orientation,
+          pan.azimut ?? 180, 0.20, 0.02,
+          pan.inclination ?? 30, cLat || 46, pan.obstacles || [],
+        );
+        grid = g.panels;
+        max  = g.max;
+      }
       totalMax += max;
 
       if (pts.length > 0) {
@@ -1212,7 +1243,9 @@ export default function SatelliteMap({
                       const inc  = Math.round(seg.pitchDegrees ?? 0);
                       const area = Math.round(seg.stats?.areaMeters2 ?? 0);
                       const sun  = Math.round(seg.stats?.sunshineHoursPerYear ?? 0);
-                      const maxP  = area > 0 ? Math.floor((area / 1.94) * 0.80) : 0;
+                      const googlePanelsForSeg = solarDataRef?.current?.solarPotential?.solarPanels
+                        ?.filter(p => p.segmentIndex === i).length ?? null;
+                      const maxP  = googlePanelsForSeg ?? (area > 0 ? Math.floor((area / 1.94) * 0.80) : 0);
                       const ori   = azimutToOrientation(az);
                       const isSel = selectedSolarSegs.has(i);
                       return (
