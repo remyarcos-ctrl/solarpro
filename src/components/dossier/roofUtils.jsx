@@ -132,6 +132,76 @@ export function detectPanOrientation(coordinates) {
   }
 }
 
+// ── Rectangle orienté d'un segment Solar API (contour orange) ────────────
+//
+// À partir de seg.boundingBox + seg.center + seg.azimuthDegrees on construit
+// un rectangle GPS orienté selon la pente du toit (comme la démo Google).
+//
+// - boundingBox (axis-aligned GPS) → dimensions en mètres
+// - azimuthDegrees → rotation (ridge perpendiculaire, slope parallèle)
+// - center → centre de rotation
+//
+// Pour un toit aligné N/S/E/O la bbox axis-aligned ≈ (ridge × slope).
+// Pour les azimuts intermédiaires on prend max/min (approximation visuelle).
+//
+export function segmentRectangleFromBoundingBox(seg) {
+  const bb     = seg?.boundingBox;
+  const center = seg?.center;
+  if (!bb?.sw || !bb?.ne || !center) return null;
+
+  const azDeg = seg.azimuthDegrees ?? 180;
+  const cLat  = center.latitude;
+  const cLng  = center.longitude;
+
+  const mPerDegLat = 110540;
+  const mPerDegLng = 111320 * Math.cos((cLat * Math.PI) / 180);
+
+  const W_m = (bb.ne.longitude - bb.sw.longitude) * mPerDegLng;
+  const H_m = (bb.ne.latitude  - bb.sw.latitude ) * mPerDegLat;
+  if (!(W_m > 0) || !(H_m > 0)) return null;
+
+  const ridgeLen = Math.max(W_m, H_m);
+  const slopeLen = Math.min(W_m, H_m);
+
+  const azRad  = (azDeg * Math.PI) / 180;
+  const slopeE = Math.sin(azRad),  slopeN =  Math.cos(azRad);
+  const ridgeE = Math.cos(azRad),  ridgeN = -Math.sin(azRad);
+
+  const signs = [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]];
+  return signs.map(([sr, ss]) => {
+    const dR = (sr * ridgeLen) / 2;
+    const dS = (ss * slopeLen) / 2;
+    const e  = ridgeE * dR + slopeE * dS;
+    const n  = ridgeN * dR + slopeN * dS;
+    return [cLng + e / mPerDegLng, cLat + n / mPerDegLat];
+  });
+}
+
+// Génère les features GeoJSON pour le layer "roof-guide" (contour orange).
+// Préférence : segments Solar API → rectangles orientés. Sinon : footprint BDTOPO.
+export function buildRoofGuideFeatures(solarData) {
+  const segs = solarData?.solarPotential?.roofSegmentStats;
+  if (segs?.length > 0) {
+    return segs
+      .map(seg => segmentRectangleFromBoundingBox(seg))
+      .filter(Boolean)
+      .map((ring, i) => ({
+        type: "Feature",
+        properties: { kind: "solar", idx: i },
+        geometry: { type: "Polygon", coordinates: [ring] },
+      }));
+  }
+  const bdtopo = solarData?.__bdtopo;
+  if (bdtopo?.footprint) {
+    return [{
+      type: "Feature",
+      properties: { kind: "bdtopo" },
+      geometry: { type: "Polygon", coordinates: bdtopo.footprint },
+    }];
+  }
+  return [];
+}
+
 // ── Panneaux exacts depuis Google Solar API (buildingInsights.solarPanels) ─
 //
 // Chaque panneau retourné par Google a :

@@ -10,7 +10,7 @@ import SolarRoofDetector from "@/components/dossier/SolarRoofDetector";
 import * as turf from "@turf/turf";
 import {
   geocode, geojsonArea, buildPanelGridRotated, detectPanOrientation,
-  buildPanelsFromGoogleSolar,
+  buildPanelsFromGoogleSolar, buildRoofGuideFeatures,
   PAN_COLORS, getSolarCoefficient, getPanelColor, getBoundingBoxMeters,
   azimutToOrientation, snapToRings,
 } from "./roofUtils";
@@ -238,11 +238,14 @@ function makeSnapPolygonMode(solarDataRef, snapMarkerRef, pansRef) {
   const base = MapboxDraw.modes.draw_polygon;
   let lastOverlapMs = 0;
 
-  // Collecte tous les rings : BDTOPO + pans existants
+  // Collecte tous les rings : rectangles Solar API (ou BDTOPO) + pans existants
   function collectRings() {
     const rings = [];
-    const bdRing = solarDataRef.current?.__bdtopo?.footprint?.[0];
-    if (bdRing) rings.push(bdRing);
+    const guideFeats = buildRoofGuideFeatures(solarDataRef.current);
+    for (const f of guideFeats) {
+      const r = f.geometry?.coordinates?.[0];
+      if (r?.length >= 3) rings.push(r);
+    }
     for (const pan of (pansRef?.current ?? [])) {
       const r = pan.coords?.[0];
       if (r?.length >= 3) rings.push(r);
@@ -723,6 +726,12 @@ function MapController({
         solarDataRef.current = solarDataRef.current ?? {};
         solarDataRef.current.__ignRoof = ignResult.value;
       }
+      // Contour orange = rectangles orientés des segments Solar API (fallback BDTOPO)
+      const mbMapRef = map?.getMap();
+      const guideFeats = buildRoofGuideFeatures(solarDataRef.current);
+      if (guideFeats.length > 0) {
+        mbMapRef?.getSource("bdtopo-guide")?.setData({ type: "FeatureCollection", features: guideFeats });
+      }
       onDataReady?.();
     }, 1500);
 
@@ -828,36 +837,32 @@ function MapController({
         }));
       },
       autoTrace: async () => {
-        const bdtopo = solarDataRef.current?.__bdtopo;
-        if (!bdtopo?.footprint) return;
-        // 1. Afficher le contour BDTOPO en orange (guide non éditable)
-        mbMap.getSource("bdtopo-guide")?.setData({
-          type: "FeatureCollection",
-          features: [{ type: "Feature", geometry: { type: "Polygon", coordinates: bdtopo.footprint } }],
-        });
+        // 1. Contour orange : rectangles Solar API (ou footprint BDTOPO en fallback)
+        const feats = buildRoofGuideFeatures(solarDataRef.current);
+        if (feats.length === 0) return;
+        mbMap.getSource("bdtopo-guide")?.setData({ type: "FeatureCollection", features: feats });
         // 2. Vue top-down Nord en haut
         mbMap.easeTo({ pitch: 0, bearing: 0, duration: 400 });
         setPitch(0); setBearing(0);
-        // 3. Activer le tracé manuel avec snap si BDTOPO dispo
+        // 3. Activer le tracé manuel avec snap
         await new Promise(r => setTimeout(r, 450));
         drawRef.current?.changeMode("snap_polygon");
         setIsDrawing(true);
       },
       startDraw: async () => {
-        const bdtopo = solarDataRef.current?.__bdtopo;
-        // Affiche automatiquement le contour BDTOPO si disponible
-        if (bdtopo?.footprint) {
-          mbMap.getSource("bdtopo-guide")?.setData({
-            type: "FeatureCollection",
-            features: [{ type: "Feature", geometry: { type: "Polygon", coordinates: bdtopo.footprint } }],
-          });
-          // Zoom sur le bâtiment pour que le contour soit bien visible
+        // Contour orange : rectangles Solar API (ou BDTOPO en fallback)
+        const feats = buildRoofGuideFeatures(solarDataRef.current);
+        const hasGuide = feats.length > 0;
+        if (hasGuide) {
+          mbMap.getSource("bdtopo-guide")?.setData({ type: "FeatureCollection", features: feats });
+          // Zoom sur l'ensemble des rectangles
           try {
+            const allCoords = feats.flatMap(f => f.geometry.coordinates[0]);
             const bbox = [
-              Math.min(...bdtopo.footprint[0].map(c => c[0])),
-              Math.min(...bdtopo.footprint[0].map(c => c[1])),
-              Math.max(...bdtopo.footprint[0].map(c => c[0])),
-              Math.max(...bdtopo.footprint[0].map(c => c[1])),
+              Math.min(...allCoords.map(c => c[0])),
+              Math.min(...allCoords.map(c => c[1])),
+              Math.max(...allCoords.map(c => c[0])),
+              Math.max(...allCoords.map(c => c[1])),
             ];
             mbMap.fitBounds(bbox, { padding: 80, pitch: 0, bearing: 0, duration: 600, maxZoom: 21 });
           } catch {
@@ -868,8 +873,7 @@ function MapController({
         }
         setPitch(0); setBearing(0);
         await new Promise(r => setTimeout(r, 650));
-        const mode = bdtopo?.footprint ? "snap_polygon" : "draw_polygon";
-        drawRef.current?.changeMode(mode);
+        drawRef.current?.changeMode(hasGuide ? "snap_polygon" : "draw_polygon");
         setIsDrawing(true);
       },
       cancelDraw: () => {
