@@ -136,6 +136,13 @@ export function detectPanOrientation(coordinates) {
 const GUIDE_PANEL_W_M = 1.13;
 const GUIDE_PANEL_H_M = 1.72;
 
+// Un pan de toit est "orienté Nord" si son azimut est dans [315°, 45°[
+// (secteur NW / N / NE). Ces pans sont inutilisables pour le solaire.
+export function isNorthFacingSegment(seg) {
+  const az = (((seg?.azimuthDegrees ?? 180) % 360) + 360) % 360;
+  return az >= 315 || az < 45;
+}
+
 // Génère les features GeoJSON pour le layer "roof-guide" (orange).
 // Renvoie UN rectangle 1.13×1.72 m par panneau buildingInsights.solarPanels[],
 // chacun orienté selon l'azimut de son segment d'origine — exactement comme
@@ -150,6 +157,7 @@ export function buildRoofGuideFeatures(solarData) {
   if (panels?.length > 0 && segs?.length > 0) {
     const features = [];
     for (let i = 0; i < segs.length; i++) {
+      if (isNorthFacingSegment(segs[i])) continue; // pan Nord → exclu
       const az = segs[i].azimuthDegrees ?? 180;
       const { panels: rects } = buildPanelsFromGoogleSolar(
         panels, i, az, GUIDE_PANEL_W_M, GUIDE_PANEL_H_M,

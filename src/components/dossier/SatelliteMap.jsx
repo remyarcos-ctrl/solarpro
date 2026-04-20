@@ -10,7 +10,7 @@ import SolarRoofDetector from "@/components/dossier/SolarRoofDetector";
 import * as turf from "@turf/turf";
 import {
   geocode, geojsonArea, buildPanelGridRotated, detectPanOrientation,
-  buildPanelsFromGoogleSolar, buildRoofGuideFeatures,
+  buildPanelsFromGoogleSolar, buildRoofGuideFeatures, isNorthFacingSegment,
   PAN_COLORS, getSolarCoefficient, getPanelColor, getBoundingBoxMeters,
   azimutToOrientation, snapToRings,
 } from "./roofUtils";
@@ -1225,8 +1225,11 @@ export default function SatelliteMap({
                 <button
                   className="text-[10px] px-2 py-1 rounded border border-yellow-500/40 text-yellow-300 hover:bg-yellow-500/20"
                   onClick={() => {
-                    const newSel = new Set(solarSegments.map((_, i) => i));
+                    // Exclure les pans orientés Nord — inutilisables en solaire
+                    const newSel = new Set();
                     solarSegments.forEach((seg, i) => {
+                      if (isNorthFacingSegment(seg)) return;
+                      newSel.add(i);
                       if (!selectedSolarSegs.has(i)) window.__smActions?.addSolarPan(seg, i);
                     });
                     setSelectedSolarSegs(newSel);
@@ -1267,11 +1270,17 @@ export default function SatelliteMap({
                       const maxP  = googlePanelsForSeg ?? (area > 0 ? Math.floor((area / 1.94) * 0.80) : 0);
                       const ori   = azimutToOrientation(az);
                       const isSel = selectedSolarSegs.has(i);
+                      const isNorth = isNorthFacingSegment(seg);
                       return (
                         <tr
                           key={i}
-                          className={`border-t border-yellow-500/10 cursor-pointer transition-colors ${isSel ? 'bg-yellow-500/20' : 'hover:bg-yellow-500/5'}`}
+                          className={`border-t border-yellow-500/10 transition-colors ${
+                            isNorth ? 'opacity-40 cursor-not-allowed'
+                            : isSel ? 'bg-yellow-500/20 cursor-pointer'
+                            : 'hover:bg-yellow-500/5 cursor-pointer'
+                          }`}
                           onClick={() => {
+                            if (isNorth) return; // pan Nord — non exploitable
                             if (isSel) {
                               window.__smActions?.removeSolarPan(i);
                               setSelectedSolarSegs(prev => { const s = new Set(prev); s.delete(i); return s; });
@@ -1280,16 +1289,20 @@ export default function SatelliteMap({
                               setSelectedSolarSegs(prev => new Set([...prev, i]));
                             }
                           }}
+                          title={isNorth ? "Pan orienté Nord — non exploitable en solaire" : undefined}
                         >
                           <td className="px-2 py-1.5 text-center">
-                            <input type="checkbox" readOnly checked={isSel} className="w-3 h-3 accent-yellow-400 cursor-pointer" />
+                            <input type="checkbox" readOnly checked={isSel} disabled={isNorth} className="w-3 h-3 accent-yellow-400 cursor-pointer" />
                           </td>
                           <td className="px-3 py-1.5 text-yellow-400 font-semibold">{i + 1}</td>
-                          <td className="px-3 py-1.5 text-foreground">{ori} <span className="text-muted-foreground">{az}°</span></td>
+                          <td className="px-3 py-1.5 text-foreground">
+                            {ori} <span className="text-muted-foreground">{az}°</span>
+                            {isNorth && <span className="ml-1 text-[10px] text-red-400">⛔ Nord</span>}
+                          </td>
                           <td className="px-3 py-1.5 text-foreground">{inc}°</td>
                           <td className="px-3 py-1.5 font-semibold text-yellow-300">{area} m²</td>
                           <td className="px-3 py-1.5 text-foreground">{sun > 0 ? `${sun} h/an` : "—"}</td>
-                          <td className="px-3 py-1.5 text-primary font-semibold">{maxP > 0 ? maxP : "—"}</td>
+                          <td className="px-3 py-1.5 text-primary font-semibold">{maxP > 0 && !isNorth ? maxP : "—"}</td>
                         </tr>
                       );
                     })}
