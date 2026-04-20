@@ -331,6 +331,7 @@ function MapController({
   const fluxLoadedRef = useRef(false);
   const fluxBlobUrlRef = useRef(null);
   const excludedPanelsRef = useRef(new Set()); // ids "s{segIdx}-p{panelIdx}"
+  const generatingRef = useRef(false);
   const [gridVersion, setGridVersion] = useState(0);
   const initializedRef = useRef(false);
   const pansRef = useRef([]);
@@ -1078,16 +1079,33 @@ function MapController({
           return prev.filter(p => p.solarSegmentIdx !== segIdx);
         });
       },
-      // Génère un pan par segment Solar API non-Nord — panneaux exclus non rendus
+      // Génère un pan par segment Solar API non-Nord — idempotent.
+      // Supprime d'abord les pans Solar déjà placés pour éviter les doublons.
       generatePanels: async () => {
+        if (generatingRef.current) return; // anti double-clic
         const segs = solarDataRef.current?.solarPotential?.roofSegmentStats;
         if (!segs?.length) return;
-        for (let i = 0; i < segs.length; i++) {
-          const seg = segs[i];
-          if (isNorthFacingSegment(seg)) continue;
-          window.__smActions?.addSolarPan?.(seg, i);
+        generatingRef.current = true;
+        try {
+          // 1. Clear des pans Solar existants (évite l'empilement)
+          setPans(prev => {
+            for (const p of prev) {
+              if (p.solarSegmentIdx != null && p.drawId) drawRef.current?.delete(p.drawId);
+            }
+            return prev.filter(p => p.solarSegmentIdx == null);
+          });
+          // 2. Laisser React flusher le setPans avant d'ajouter
+          await new Promise(r => setTimeout(r, 50));
+          // 3. Ajout séquentiel (createPanFromCoordsRef est async et stateful)
+          for (let i = 0; i < segs.length; i++) {
+            const seg = segs[i];
+            if (isNorthFacingSegment(seg)) continue;
+            await window.__smActions?.addSolarPan?.(seg, i);
+          }
+          setGridVersion(v => v + 1);
+        } finally {
+          generatingRef.current = false;
         }
-        setGridVersion(v => v + 1);
       },
       resetView:     (c) => { if (c) mbMap.flyTo({ center: [c.lon, c.lat], zoom: 20, pitch: 45, bearing: 0, duration: 800 }); },
       changePitch:   (p) => mbMap.easeTo({ pitch: p, duration: 500 }),
@@ -1297,9 +1315,10 @@ export default function SatelliteMap({
             <Button size="sm" variant="outline"
               onClick={() => act("generatePanels")}
               className="border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/15"
-              title="Créer les pans pour tous les segments non-Nord (les panneaux exclus sont ignorés)"
+              title="Crée (ou recrée) les pans pour tous les segments non-Nord — les panneaux exclus sont ignorés"
             >
-              <Plus className="w-4 h-4 mr-1" /> Générer les panneaux
+              <Plus className="w-4 h-4 mr-1" />
+              {pans.some(p => p.solarSegmentIdx != null) ? "Régénérer les panneaux" : "Générer les panneaux"}
             </Button>
             <Button size="sm" variant="outline"
               onClick={() => setShowFlux(v => !v)}
