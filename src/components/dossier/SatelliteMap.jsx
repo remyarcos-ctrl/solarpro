@@ -238,14 +238,12 @@ function makeSnapPolygonMode(solarDataRef, snapMarkerRef, pansRef) {
   const base = MapboxDraw.modes.draw_polygon;
   let lastOverlapMs = 0;
 
-  // Collecte tous les rings : rectangles Solar API (ou BDTOPO) + pans existants
+  // Collecte rings pour le snap : BDTOPO footprint (contour bâtiment) + pans existants.
+  // Les rectangles des panneaux individuels ne servent pas au snap (trop nombreux).
   function collectRings() {
     const rings = [];
-    const guideFeats = buildRoofGuideFeatures(solarDataRef.current);
-    for (const f of guideFeats) {
-      const r = f.geometry?.coordinates?.[0];
-      if (r?.length >= 3) rings.push(r);
-    }
+    const bdRing = solarDataRef.current?.__bdtopo?.footprint?.[0];
+    if (bdRing) rings.push(bdRing);
     for (const pan of (pansRef?.current ?? [])) {
       const r = pan.coords?.[0];
       if (r?.length >= 3) rings.push(r);
@@ -507,8 +505,25 @@ function MapController({
     }
     if (!mbMap.getSource("bdtopo-guide")) {
       mbMap.addSource("bdtopo-guide", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      mbMap.addLayer({ id: "bdtopo-guide-fill", type: "fill",   source: "bdtopo-guide", paint: { "fill-color": "#E8A020", "fill-opacity": 0.08 } });
-      mbMap.addLayer({ id: "bdtopo-guide-line", type: "line",   source: "bdtopo-guide", paint: { "line-color": "#E8A020", "line-width": 2.5, "line-dasharray": [4, 2] } });
+      mbMap.addLayer({
+        id: "bdtopo-guide-fill", type: "fill", source: "bdtopo-guide",
+        paint: {
+          "fill-color": "#E8A020",
+          "fill-opacity": ["case", ["==", ["get", "kind"], "solar-panel"], 0.55, 0.08],
+        },
+      });
+      // Panneaux Solar API : ligne fine orange continue
+      mbMap.addLayer({
+        id: "bdtopo-guide-line-panel", type: "line", source: "bdtopo-guide",
+        filter: ["==", ["get", "kind"], "solar-panel"],
+        paint: { "line-color": "#E8A020", "line-width": 0.8 },
+      });
+      // Fallback BDTOPO : ligne épaisse orange pointillée
+      mbMap.addLayer({
+        id: "bdtopo-guide-line-outline", type: "line", source: "bdtopo-guide",
+        filter: ["!=", ["get", "kind"], "solar-panel"],
+        paint: { "line-color": "#E8A020", "line-width": 2.5, "line-dasharray": [4, 2] },
+      });
     }
     if (!mbMap.getSource("overlap-preview")) {
       mbMap.addSource("overlap-preview", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
