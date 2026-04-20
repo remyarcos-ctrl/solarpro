@@ -26,7 +26,7 @@ export default async function handler(req, res) {
       throw new Error(`DataLayers ${lRes.status}: ${b.error?.message || JSON.stringify(b).slice(0,120)}`);
     }
     const layers = await lRes.json();
-    const { annualFluxUrl, maskUrl, boundingBox } = layers;
+    const { annualFluxUrl, maskUrl } = layers;
     if (!annualFluxUrl) throw new Error('annualFluxUrl manquant dans la réponse DataLayers');
     if (!maskUrl)       throw new Error('maskUrl manquant dans la réponse DataLayers');
 
@@ -115,11 +115,16 @@ export default async function handler(req, res) {
     if (scale < 1) pipeline = pipeline.resize(outW, outH, { kernel: 'nearest' });
     const pngBuf = await pipeline.png({ compressionLevel: 9 }).toBuffer();
 
-    // ── 7. Réponse : PNG binaire + bounds en headers (pas de JSON base64) ─
-    const { sw, ne } = boundingBox;
+    // ── 7. Bounds GPS : lu directement depuis la georeference GeoTIFF ─────
+    // (la réponse DataLayers n'inclut pas boundingBox — on l'extrait du TIFF)
+    const [minX, minY, maxX, maxY] = fluxImg.getBoundingBox();
+    const swLat = Math.min(minY, maxY), neLat = Math.max(minY, maxY);
+    const swLon = Math.min(minX, maxX), neLon = Math.max(minX, maxX);
+
+    // ── 8. Réponse : PNG binaire + bounds en headers ─────────────────────
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.setHeader('X-Bounds', `${sw.latitude},${sw.longitude},${ne.latitude},${ne.longitude}`);
+    res.setHeader('X-Bounds', `${swLat},${swLon},${neLat},${neLon}`);
     res.setHeader('X-Flux-Min', String(Math.round(minFlux)));
     res.setHeader('X-Flux-Max', String(Math.round(maxFlux)));
     res.setHeader('X-Width',  String(outW));

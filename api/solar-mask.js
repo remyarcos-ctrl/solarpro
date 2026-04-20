@@ -5,6 +5,7 @@
 // Env vars: GOOGLE_SOLAR_KEY
 
 import sharp from 'sharp';
+import { fromArrayBuffer } from 'geotiff';
 
 function convexHull(pts) {
   if (pts.length < 3) return pts;
@@ -53,7 +54,7 @@ export default async function handler(req, res) {
 
     const [insights, layers] = await Promise.all([iRes.json(), lRes.json()]);
 
-    const { maskUrl, boundingBox } = layers;
+    const { maskUrl } = layers;
     const sp         = insights.solarPotential ?? {};
     const roofSegs   = sp.roofSegmentStats ?? [];
     const panels     = sp.solarPanels ?? [];
@@ -72,8 +73,12 @@ export default async function handler(req, res) {
       .toBuffer({ resolveWithObject: true });
     const { width, height } = info;
 
-    // Conversion pixel → GPS via boundingBox DataLayers
-    const sw = boundingBox.sw, ne = boundingBox.ne;
+    // Bounds GeoTIFF (la réponse DataLayers n'inclut pas boundingBox)
+    const maskTiff = await fromArrayBuffer(new Uint8Array(maskBuf).buffer);
+    const maskImg  = await maskTiff.getImage();
+    const [minX, minY, maxX, maxY] = maskImg.getBoundingBox();
+    const sw = { latitude: Math.min(minY, maxY), longitude: Math.min(minX, maxX) };
+    const ne = { latitude: Math.max(minY, maxY), longitude: Math.max(minX, maxX) };
     const pxToGPS = (px, py) => [
       sw.longitude + (px / width)  * (ne.longitude - sw.longitude),
       ne.latitude  - (py / height) * (ne.latitude  - sw.latitude),

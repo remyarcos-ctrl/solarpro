@@ -701,7 +701,7 @@ function MapController({
       el.style.cssText = "width:14px;height:14px;background:#E8A020;border-radius:50%;border:3px solid white;box-shadow:0 0 0 4px rgba(232,160,32,0.3)";
       const mk = new mapboxgl.Marker({ element: el }).setLngLat([c.lon, c.lat]).addTo(mbMap);
       markersRef.current.push(mk);
-      mbMap.flyTo({ center: [c.lon, c.lat], zoom: 20, pitch: 45, bearing: 0, duration: 2000 });
+      mbMap.flyTo({ center: [c.lon, c.lat], zoom: 20, pitch: 0, bearing: 0, duration: 2000 });
 
       // ── Détection automatique des pans par IA Vision (après chargement tuiles) ──
       const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
@@ -1118,7 +1118,7 @@ function MapController({
           generatingRef.current = false;
         }
       },
-      resetView:     (c) => { if (c) mbMap.flyTo({ center: [c.lon, c.lat], zoom: 20, pitch: 45, bearing: 0, duration: 800 }); },
+      resetView:     (c) => { if (c) mbMap.flyTo({ center: [c.lon, c.lat], zoom: 20, pitch: 0, bearing: 0, duration: 800 }); },
       changePitch:   (p) => mbMap.easeTo({ pitch: p, duration: 500 }),
       changeBearing: (b) => mbMap.easeTo({ bearing: b, duration: 400 }),
       getBounds: () => {
@@ -1197,7 +1197,7 @@ export default function SatelliteMap({
   const [isDrawing,  setIsDrawing]  = useState(false);
   const [pans,       setPans]       = useState([]);
   const [coords,     setCoords]     = useState(null);
-  const [pitch,      setPitch]      = useState(45);
+  const [pitch,      setPitch]      = useState(0);
   const [bearing,    setBearing]    = useState(0);
   const [showLabels, setShowLabels] = useState(false);
   const [loading,    setLoading]    = useState(false);
@@ -1544,7 +1544,7 @@ export default function SatelliteMap({
           </div>
         )}
         <Map id="satelliteMap" mapboxAccessToken={TOKEN}
-          initialViewState={{ longitude: 2.3, latitude: 46.8, zoom: 5, pitch: 45, bearing: 0 }}
+          initialViewState={{ longitude: 2.3, latitude: 46.8, zoom: 5, pitch: 0, bearing: 0 }}
           style={{ width: "100%", height: "100%" }} mapStyle={BASE_MAPSTYLE} maxZoom={22}
           preserveDrawingBuffer={true}
           onLoad={() => setReady(true)}>

@@ -24,7 +24,7 @@ export default async function handler(req, res) {
       throw new Error(`DataLayers ${lRes.status}: ${b.error?.message || ''}`);
     }
     const layers = await lRes.json();
-    const { annualFluxUrl, maskUrl, boundingBox } = layers;
+    const { annualFluxUrl, maskUrl } = layers;
     if (!annualFluxUrl) throw new Error('annualFluxUrl manquant');
     if (!maskUrl)       throw new Error('maskUrl manquant');
 
@@ -60,7 +60,10 @@ export default async function handler(req, res) {
     const cellsH    = Math.floor(H / bin);
     const actualCellSize = bin * pixelSize;
 
-    const sw = boundingBox.sw, ne = boundingBox.ne;
+    // Bounds : lus depuis la georeference GeoTIFF (pas dans la réponse DataLayers)
+    const [minX, minY, maxX, maxY] = fluxImg.getBoundingBox();
+    const sw = { latitude: Math.min(minY, maxY), longitude: Math.min(minX, maxX) };
+    const ne = { latitude: Math.max(minY, maxY), longitude: Math.max(minX, maxX) };
     const latSpan = ne.latitude  - sw.latitude;
     const lngSpan = ne.longitude - sw.longitude;
 
@@ -109,7 +112,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       cells,
       cellSizeMeters: actualCellSize,
-      bounds: boundingBox,
+      bounds: { sw, ne },
       minFlux: Math.round(minFlux),
       maxFlux: Math.round(maxFlux),
       pixelSizeMeters: pixelSize,
