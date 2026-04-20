@@ -5,6 +5,39 @@
 // Env vars : GOOGLE_SOLAR_KEY
 
 import { fromArrayBuffer } from 'geotiff';
+import proj4 from 'proj4';
+
+// UTM (coords GeoTIFF Google) → WGS84 lat/lng
+function toWgs84(img, reqLat, reqLon) {
+  let epsg = null;
+  try {
+    const gk = img.getGeoKeys?.() || {};
+    epsg = gk.ProjectedCSTypeGeoKey || gk.GeographicTypeGeoKey || null;
+  } catch {}
+  const [minX, minY, maxX, maxY] = img.getBoundingBox();
+  if (epsg === 4326 || (Math.abs(minX) <= 180 && Math.abs(minY) <= 90)) {
+    return {
+      swLat: Math.min(minY, maxY), neLat: Math.max(minY, maxY),
+      swLon: Math.min(minX, maxX), neLon: Math.max(minX, maxX),
+    };
+  }
+  let zone, isNorth;
+  if (epsg && epsg >= 32601 && epsg <= 32660) { zone = epsg - 32600; isNorth = true; }
+  else if (epsg && epsg >= 32701 && epsg <= 32760) { zone = epsg - 32700; isNorth = false; }
+  else {
+    zone    = Math.floor((reqLon + 180) / 6) + 1;
+    isNorth = reqLat >= 0;
+    epsg    = (isNorth ? 32600 : 32700) + zone;
+  }
+  const code = `EPSG:${epsg}`;
+  if (!proj4.defs(code)) proj4.defs(code, `+proj=utm +zone=${zone}${isNorth ? '' : ' +south'} +datum=WGS84 +units=m +no_defs`);
+  const [swLon, swLatRaw] = proj4(code, 'WGS84', [Math.min(minX, maxX), Math.min(minY, maxY)]);
+  const [neLon, neLatRaw] = proj4(code, 'WGS84', [Math.max(minX, maxX), Math.max(minY, maxY)]);
+  return {
+    swLat: Math.min(swLatRaw, neLatRaw), neLat: Math.max(swLatRaw, neLatRaw),
+    swLon: Math.min(swLon, neLon),       neLon: Math.max(swLon, neLon),
+  };
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -60,10 +93,10 @@ export default async function handler(req, res) {
     const cellsH    = Math.floor(H / bin);
     const actualCellSize = bin * pixelSize;
 
-    // Bounds : lus depuis la georeference GeoTIFF (pas dans la réponse DataLayers)
-    const [minX, minY, maxX, maxY] = fluxImg.getBoundingBox();
-    const sw = { latitude: Math.min(minY, maxY), longitude: Math.min(minX, maxX) };
-    const ne = { latitude: Math.max(minY, maxY), longitude: Math.max(minX, maxX) };
+    // Bounds WGS84 (GeoTIFF Google = UTM → reprojecté)
+    const wgs = toWgs84(fluxImg, lat, lon);
+    const sw = { latitude: wgs.swLat, longitude: wgs.swLon };
+    const ne = { latitude: wgs.neLat, longitude: wgs.neLon };
     const latSpan = ne.latitude  - sw.latitude;
     const lngSpan = ne.longitude - sw.longitude;
 

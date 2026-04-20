@@ -6,6 +6,7 @@
 
 import sharp from 'sharp';
 import { fromArrayBuffer } from 'geotiff';
+import proj4 from 'proj4';
 
 function convexHull(pts) {
   if (pts.length < 3) return pts;
@@ -73,12 +74,29 @@ export default async function handler(req, res) {
       .toBuffer({ resolveWithObject: true });
     const { width, height } = info;
 
-    // Bounds GeoTIFF (la réponse DataLayers n'inclut pas boundingBox)
+    // Bounds WGS84 (GeoTIFF Google en UTM → reprojecté)
     const maskTiff = await fromArrayBuffer(new Uint8Array(maskBuf).buffer);
     const maskImg  = await maskTiff.getImage();
+    let gk = {};
+    try { gk = maskImg.getGeoKeys?.() || {}; } catch {}
+    let epsg = gk.ProjectedCSTypeGeoKey || gk.GeographicTypeGeoKey || null;
     const [minX, minY, maxX, maxY] = maskImg.getBoundingBox();
-    const sw = { latitude: Math.min(minY, maxY), longitude: Math.min(minX, maxX) };
-    const ne = { latitude: Math.max(minY, maxY), longitude: Math.max(minX, maxX) };
+    let sw, ne;
+    if (epsg === 4326 || (Math.abs(minX) <= 180 && Math.abs(minY) <= 90)) {
+      sw = { latitude: Math.min(minY, maxY), longitude: Math.min(minX, maxX) };
+      ne = { latitude: Math.max(minY, maxY), longitude: Math.max(minX, maxX) };
+    } else {
+      let zone, isNorth;
+      if (epsg && epsg >= 32601 && epsg <= 32660) { zone = epsg - 32600; isNorth = true; }
+      else if (epsg && epsg >= 32701 && epsg <= 32760) { zone = epsg - 32700; isNorth = false; }
+      else { zone = Math.floor((lon + 180) / 6) + 1; isNorth = lat >= 0; epsg = (isNorth ? 32600 : 32700) + zone; }
+      const code = `EPSG:${epsg}`;
+      if (!proj4.defs(code)) proj4.defs(code, `+proj=utm +zone=${zone}${isNorth ? '' : ' +south'} +datum=WGS84 +units=m +no_defs`);
+      const [swLon, swLat] = proj4(code, 'WGS84', [Math.min(minX, maxX), Math.min(minY, maxY)]);
+      const [neLon, neLat] = proj4(code, 'WGS84', [Math.max(minX, maxX), Math.max(minY, maxY)]);
+      sw = { latitude: Math.min(swLat, neLat), longitude: Math.min(swLon, neLon) };
+      ne = { latitude: Math.max(swLat, neLat), longitude: Math.max(swLon, neLon) };
+    }
     const pxToGPS = (px, py) => [
       sw.longitude + (px / width)  * (ne.longitude - sw.longitude),
       ne.latitude  - (py / height) * (ne.latitude  - sw.latitude),
