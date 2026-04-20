@@ -1,20 +1,60 @@
 // ── Données par défaut ────────────────────────────────────────────────────
 export const DEFAULT_SETTINGS = {
   electricity_price:            0.2516,
+  electricity_price_hp:         0.2550,  // Tarif Bleu option HP
+  electricity_price_hc:         0.2060,  // Tarif Bleu option HC
+  tariff_type:                  'base',  // 'base' | 'hphc'
   electricity_price_updated_at: '2025-02-01',
   buyback_rate:             0.1302,
   regional_production:      1100,
-  self_consumption_rate:    70,
+  self_consumption_rate:    70,     // utilisé uniquement si pas de conso client
   inflation_rate:           5,
   degradation_rate:         0.4,
   prime_per_kwc:            380,
   installation_cost_per_wc: 2.5,
+  battery_cost_per_kwh:     700,    // ~€ / kWh de batterie (pose incl.)
   company_name:             "SolarPro",
   company_address:          "",
   company_phone:            "",
   company_email:            "",
   company_siret:            "",
   company_logo_url:         "",
+};
+
+// ── Profils de consommation (répartition mensuelle + ratio jour) ──────────
+// monthlyShare : % de la conso annuelle par mois (Jan → Déc, somme = 1)
+// daytimeRatio : % de la conso journalière entre ~10h et ~18h (plage solaire)
+export const CONSUMPTION_PROFILES = {
+  standard: {
+    label: "Résidence principale standard",
+    monthlyShare: [0.108, 0.094, 0.084, 0.074, 0.063, 0.058, 0.058, 0.058, 0.074, 0.094, 0.115, 0.120],
+    daytimeRatio: 0.40,
+  },
+  electric_heating: {
+    label: "Chauffage électrique",
+    monthlyShare: [0.150, 0.130, 0.095, 0.060, 0.040, 0.030, 0.030, 0.030, 0.050, 0.085, 0.135, 0.165],
+    daytimeRatio: 0.40,
+  },
+  heat_pump: {
+    label: "Pompe à chaleur",
+    monthlyShare: [0.135, 0.115, 0.090, 0.065, 0.050, 0.045, 0.045, 0.045, 0.060, 0.090, 0.120, 0.140],
+    daytimeRatio: 0.45,
+  },
+  secondary: {
+    label: "Résidence secondaire / week-end",
+    monthlyShare: [0.050, 0.050, 0.070, 0.090, 0.110, 0.120, 0.140, 0.140, 0.110, 0.070, 0.050, 0.040],
+    daytimeRatio: 0.55,
+  },
+  teletravail: {
+    label: "Télétravail à domicile",
+    monthlyShare: [0.095, 0.085, 0.080, 0.075, 0.070, 0.070, 0.070, 0.070, 0.085, 0.090, 0.105, 0.105],
+    daytimeRatio: 0.55,
+  },
+  business: {
+    label: "Bâtiment tertiaire / commerce",
+    monthlyShare: [0.085, 0.085, 0.085, 0.080, 0.080, 0.080, 0.080, 0.080, 0.085, 0.085, 0.090, 0.085],
+    daytimeRatio: 0.80,
+  },
 };
 
 export const DEFAULT_PANELS = [
@@ -82,14 +122,60 @@ export function calculateMaxPanels(roofWidth, roofHeight, panelWidthMm, panelHei
   return cols * rows;
 }
 
+// ── Autoconso mensuelle réelle ────────────────────────────────────────────
+// Combine la production mensuelle (PVGIS) et la conso mensuelle du foyer
+// (conso annuelle × profil). Optionnellement : batterie pour reporter le
+// surplus jour → consommation nuit.
+//
+// Retourne { autoAnnual, surplusAnnual, selfConsRate }.
+//
+// monthlyProdPerKwc : [{ month, kWhPerKwc }] issu de PVGIS (12 items)
+// totalKwc          : puissance totale installée (kWc)
+// annualConsKwh     : conso annuelle du foyer (kWh)
+// profileKey        : clé de CONSUMPTION_PROFILES
+// batteryKwh        : capacité utile batterie (kWh, 0 si pas de batterie)
+//
+function computeMonthlySelfConsumption(monthlyProdPerKwc, totalKwc, annualConsKwh, profileKey, batteryKwh = 0) {
+  const prof = CONSUMPTION_PROFILES[profileKey] || CONSUMPTION_PROFILES.standard;
+  // Capacité batterie mensuelle : ~30 cycles × 90 % de rendement utile.
+  const batteryMonthlyCap = batteryKwh * 30 * 0.90;
+
+  let autoAnnual = 0, surplusAnnual = 0, prodAnnual = 0;
+  for (let m = 0; m < 12; m++) {
+    const prodMois = (monthlyProdPerKwc?.[m]?.kWhPerKwc || 0) * totalKwc;
+    prodAnnual    += prodMois;
+    const consMois = annualConsKwh * prof.monthlyShare[m];
+    const consDay  = consMois * prof.daytimeRatio;
+    const consNight= consMois * (1 - prof.daytimeRatio);
+
+    // 1) Autoconso directe en plein jour
+    const directAuto = Math.min(prodMois, consDay);
+    let surplusMois  = prodMois - directAuto;
+
+    // 2) Batterie : stocke le surplus jour, restitue la nuit (limitée par capacité ET conso nuit)
+    const battUsed = Math.min(surplusMois, consNight, batteryMonthlyCap);
+    surplusMois   -= battUsed;
+
+    autoAnnual    += directAuto + battUsed;
+    surplusAnnual += surplusMois;
+  }
+  const selfConsRate = prodAnnual > 0 ? autoAnnual / prodAnnual : 0;
+  return { autoAnnual, surplusAnnual, selfConsRate };
+}
+
 // ── CALCUL DE PROFITABILITÉ BASÉ SUR LES VRAIS PANS ──────────────────────
 //
 // Si des pans sont disponibles (tracés sur la carte), on calcule
 // pan par pan avec orientation, inclinaison, ombrage et données PVGIS réelles.
+// Sinon : mode simple avec panelCount.
 //
-// Si pas de pans (fallback), on utilise le mode simple avec panelCount.
+// dossier (optionnel) : {
+//   annual_consumption_kwh : conso annuelle du foyer
+//   consumption_profile    : 'standard' | 'electric_heating' | ...
+//   has_battery, battery_kwh : option batterie
+// }
 //
-export function calculateProfitability(panelCount, panel, settings, pans = [], pvgisData = null) {
+export function calculateProfitability(panelCount, panel, settings, pans = [], pvgisData = null, dossier = {}) {
   if (!panelCount || !panel || !settings) return null;
 
   const baseKwhPerKwc = pvgisData?.annualKwhPerKwc || settings.regional_production || 1100;
@@ -185,22 +271,49 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
   }
 
   // ── Répartition autoconsommation / surplus ────────────────────────────
-  const selfConsRate = (settings.self_consumption_rate || 70) / 100;
-  const selfConsumed = Math.round(annualProduction * selfConsRate);
-  const surplus      = Math.round(annualProduction * (1 - selfConsRate));
+  // Priorité : calcul mensuel (conso client + profil + batterie).
+  // Sinon : fallback taux fixe des réglages.
+  const totalKwc      = totalKwcFromPans || (panelCount * panel.power_wc) / 1000;
+  const annualConsKwh = Number(dossier?.annual_consumption_kwh) || 0;
+  const profileKey    = dossier?.consumption_profile || 'standard';
+  const batteryKwh    = dossier?.has_battery ? (Number(dossier?.battery_kwh) || 0) : 0;
 
-  // ── Revenus annuels ───────────────────────────────────────────────────
-  const elecPrice    = settings.electricity_price    || 0.2516;
-  const buybackRate  = settings.buyback_rate         || 0.1302;
-  const annualSavings        = Math.round(selfConsumed * elecPrice);
+  let selfConsumed, surplus, selfConsRate, consMode;
+  if (annualConsKwh > 0 && pvgisData?.monthlyProduction?.length === 12) {
+    const r = computeMonthlySelfConsumption(
+      pvgisData.monthlyProduction, totalKwc, annualConsKwh, profileKey, batteryKwh
+    );
+    selfConsumed = Math.round(r.autoAnnual);
+    surplus      = Math.round(r.surplusAnnual);
+    selfConsRate = r.selfConsRate;
+    consMode     = batteryKwh > 0 ? 'monthly+battery' : 'monthly';
+  } else {
+    const rate = (settings.self_consumption_rate || 70) / 100;
+    selfConsumed = Math.round(annualProduction * rate);
+    surplus      = Math.round(annualProduction * (1 - rate));
+    selfConsRate = rate;
+    consMode     = 'flat-rate';
+  }
+
+  // ── Revenus annuels (avec HP/HC optionnel) ────────────────────────────
+  const tariff      = settings.tariff_type || 'base';
+  const elecPrice   = settings.electricity_price   || 0.2516;
+  const elecPriceHP = settings.electricity_price_hp || 0.2550;
+  const elecPriceHC = settings.electricity_price_hc || 0.2060;
+  const buybackRate = settings.buyback_rate || 0.1302;
+
+  // Solaire ≈ 100 % en heures pleines (production mi-journée = HP).
+  // Donc en tarif HP/HC, l'autoconso économise au prix HP (plus avantageux).
+  const autoElecPrice = tariff === 'hphc' ? elecPriceHP : elecPrice;
+  const annualSavings        = Math.round(selfConsumed * autoElecPrice);
   const annualBuybackRevenue = Math.round(surplus * buybackRate);
   const totalAnnualBenefit   = annualSavings + annualBuybackRevenue;
 
   // ── Coûts & financement ───────────────────────────────────────────────
-  const totalKwc       = totalKwcFromPans || (panelCount * panel.power_wc) / 1000;
-  const panelCost      = Math.round(panelCount * (panel.price || 0));
-  const installCost    = Math.round(totalKwc * 1000 * (settings.installation_cost_per_wc || 2.5));
-  const totalCost      = panelCost + installCost;
+  const panelCost     = Math.round(panelCount * (panel.price || 0));
+  const installCost   = Math.round(totalKwc * 1000 * (settings.installation_cost_per_wc || 2.5));
+  const batteryCost   = Math.round(batteryKwh * (settings.battery_cost_per_kwh || 700));
+  const totalCost     = panelCost + installCost + batteryCost;
 
   // Prime selon puissance installée (barème 2025)
   const primePerKwc = totalKwc < 3  ? (settings.prime_per_kwc || 380)
@@ -221,6 +334,10 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
   const projections = [];
   let cumulativeGains = -resteACharge;
 
+  // Remplacement onduleur à l'année 13 (~1800 € pour 6 kWc, prorata puissance)
+  const inverterReplacementYear = 13;
+  const inverterReplacementCost = Math.round(totalKwc * 300);
+
   for (let year = 1; year <= 25; year++) {
     const degradFactor = Math.pow(1 - degradationRate, year - 1);
     const inflFactor   = Math.pow(1 + inflationRate, year - 1);
@@ -228,9 +345,10 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
     const yearProd       = annualProduction * degradFactor;
     const yearAuto       = yearProd * selfConsRate;
     const yearSurplus    = yearProd * (1 - selfConsRate);
-    const yearSavings    = Math.round(yearAuto * elecPrice * inflFactor);
+    const yearSavings    = Math.round(yearAuto * autoElecPrice * inflFactor);
     const yearBuyback    = Math.round(yearSurplus * buybackRate); // tarif fixe 20 ans
-    const yearBenefit    = yearSavings + yearBuyback;
+    let   yearBenefit    = yearSavings + yearBuyback;
+    if (year === inverterReplacementYear) yearBenefit -= inverterReplacementCost;
     cumulativeGains     += yearBenefit;
 
     projections.push({
@@ -254,20 +372,30 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
     annualProduction:  Math.round(annualProduction),
     selfConsumed,
     surplus,
+    selfConsRate:      Math.round(selfConsRate * 100),
+    consMode,
+    annualConsKwh,
+    profileKey,
+    batteryKwh,
+    tariff,
     avgPR,
 
     // Revenus
     annualSavings,
     annualBuybackRevenue,
     totalAnnualBenefit,
+    autoElecPrice,
 
     // Coûts
     panelCost,
     installationCost: installCost,
+    batteryCost,
     totalCost,
     primeAutoConsommation,
     resteACharge,
     roiYears,
+    inverterReplacementCost,
+    inverterReplacementYear,
 
     // Projection
     projections,

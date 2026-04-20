@@ -11,6 +11,7 @@ import { calculateProfitability } from "@/lib/solarCalculations";
 import ClientForm from "@/components/dossier/ClientForm";
 import SatelliteMap from "@/components/dossier/SatelliteMap";
 import PanelConfigurator from "@/components/dossier/PanelConfigurator";
+import ConsumptionConfigurator from "@/components/dossier/ConsumptionConfigurator";
 import ProfitabilityStudy from "@/components/dossier/ProfitabilityStudy";
 import ExportPdfButton from "@/components/dossier/ExportPdfButton";
 import SolarAI from "@/components/dossier/SolarAI";
@@ -76,10 +77,14 @@ export default function DossierDetail() {
     ? (panels.find(p => p.id === data.panel_model_id) || panels[0])
     : null;
 
-  const settingsWithPVGIS = useMemo(() =>
-    pvgisData ? { ...settings, regional_production: pvgisData.annualKwhPerKwc, pvgisSource: pvgisData.pvgisSource } : settings,
-    [settings, pvgisData]
-  );
+  const settingsWithPVGIS = useMemo(() => {
+    const base = pvgisData
+      ? { ...settings, regional_production: pvgisData.annualKwhPerKwc, pvgisSource: pvgisData.pvgisSource }
+      : { ...settings };
+    // Override tarif par dossier si saisi
+    if (data?.tariff_type) base.tariff_type = data.tariff_type;
+    return base;
+  }, [settings, pvgisData, data?.tariff_type]);
 
   const profitability = useMemo(() => {
     if (!data?.panel_count || !selectedPanel || !settings) return null;
@@ -89,8 +94,9 @@ export default function DossierDetail() {
       settingsWithPVGIS,
       pans,        // ← vrais pans tracés
       pvgisData,   // ← données météo réelles
+      data,        // ← conso, profil, batterie (Top 1/3)
     );
-  }, [data?.panel_count, selectedPanel, settingsWithPVGIS, pans, pvgisData]);
+  }, [data, selectedPanel, settingsWithPVGIS, pans, pvgisData]);
 
   const updateMutation = useMutation({
     mutationFn: (d) => localClients.update(clientId, d),
@@ -190,6 +196,12 @@ export default function DossierDetail() {
               : <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /></div>
             }
           </div>
+          <ConsumptionConfigurator
+            data={data}
+            onChange={(patch) => setData(d => ({ ...d, ...patch }))}
+            settings={settingsWithPVGIS}
+            onSettingsChange={(patch) => setData(d => ({ ...d, ...patch }))}
+          />
           <div className="rounded-xl bg-card border border-border p-6">
             <h2 className="text-lg font-semibold mb-4">Orientation panneaux</h2>
             <div className="grid grid-cols-2 gap-3">
