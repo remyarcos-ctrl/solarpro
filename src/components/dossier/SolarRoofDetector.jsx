@@ -1,13 +1,18 @@
 import React, { useState } from "react";
 import { Sparkles, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import * as turf from "@turf/turf";
 import { azimutToOrientation } from "./roofUtils";
+
+// Surface min/max d'un pan de toit réaliste (m²)
+const MIN_PAN_AREA_M2 = 5;
+const MAX_PAN_AREA_M2 = 150;
 
 function visionEndpoint() { return '/api/roof-vision'; }
 function maskEndpoint()   { return '/api/solar-mask';  }
 
-// ── Bounds GPS de l'image Mapbox Static (640×480 @ zoom 20) ─────────────
+// ── Bounds GPS de l'image Mapbox Static (800×600 @ zoom 19) ─────────────
 // ⚠️ DOIVENT être synchronisés avec api/roof-vision.js
-function staticImageBounds(lat, lon, zoom = 20, w = 640, h = 480) {
+function staticImageBounds(lat, lon, zoom = 19, w = 800, h = 600) {
   const mPerPx = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
   const halfW  = (w / 2) * mPerPx;
   const halfH  = (h / 2) * mPerPx;
@@ -89,15 +94,18 @@ Retourne UNIQUEMENT ce JSON (sans markdown) :
 
 // ── Vision seule : pans en % de l'image (0-100) ──────────────────────────
 async function analyzeRoofWithVision(coords) {
-  const prompt = `Image satellite centrée sur UN bâtiment précis (au centre exact de l'image).
-Identifie UNIQUEMENT les pans de toit de ce bâtiment central.
-⛔ IGNORE les bâtiments voisins, annexes, garages détachés, bâtiments en bord d'image.
+  const prompt = `Identifie UNIQUEMENT les surfaces de toit (pas les jardins, pas les terrasses, pas le sol, pas les piscines, pas les parkings, pas les routes).
+✅ Seulement les toitures visibles : tuile rouge, ardoise grise, zinc, bac acier.
 
-Pour chaque pan du bâtiment central, donne les coins (3 à 6 points) en POURCENTAGE de l'image.
-x = 0 (gauche) à 100 (droite). y = 0 (haut) à 100 (bas).
-Suis exactement l'arête du toit, NE DÉBORDE PAS sur les murs ni sur le sol.
+Règles strictes :
+- Un pan de toit typique fait 20 à 60 m² (une maison = 2 à 4 pans maximum).
+- Un pan est UNE SURFACE PLANE UNIQUE — ne fusionne jamais plusieurs toits.
+- Concentre-toi sur LE BÂTIMENT CENTRAL de l'image ; ignore bâtiments voisins.
+- Les coins doivent suivre exactement les arêtes du toit (faîtage, égout, rives).
 
-Retourne UNIQUEMENT ce JSON (pas de markdown, pas de commentaire) :
+Coordonnées en POURCENTAGE (0-100). x=0 gauche, 100 droite. y=0 haut, 100 bas.
+
+Retourne UNIQUEMENT les contours des toitures visibles, en JSON (pas de markdown) :
 {"pans":[{"pan":1,"points":[{"x":42,"y":38},{"x":58,"y":38},{"x":58,"y":58},{"x":42,"y":58}]}],"confiance":85}`;
 
   return callVision(coords, prompt);
@@ -193,15 +201,33 @@ export default function SolarRoofDetector({ capturedImage, coords }) {
         const pans = (analysis.pans || []).filter(p => p.points?.length >= 3);
 
         const exploitablePans = [];
+        const rejected = [];
         for (let i = 0; i < pans.length; i++) {
           const p = pans[i];
           const polyCoords = percentsToGPS(p.points, bounds);
           if (!polyCoords) continue;
+
+          // Post-filtre : surface réaliste d'un pan de toit (5-150 m²)
+          let areaM2 = 0;
+          try { areaM2 = Math.round(turf.area(turf.polygon(polyCoords))); } catch {}
+          if (areaM2 < MIN_PAN_AREA_M2 || areaM2 > MAX_PAN_AREA_M2) {
+            console.warn(`[vision] pan ${p.pan ?? i+1} REJETÉ : ${areaM2}m² (limites ${MIN_PAN_AREA_M2}-${MAX_PAN_AREA_M2})`);
+            rejected.push({ pan: p.pan ?? i+1, area: areaM2 });
+            continue;
+          }
+
           await window.__smActions?.addAIPan?.(
             polyCoords,
             { azimut: p.azimut ?? null, inclination: p.inclinaison ?? null, obstacles: [] }
           );
-          exploitablePans.push({ nom: `Pan ${p.pan ?? i + 1}`, azimut: p.azimut });
+          exploitablePans.push({ nom: `Pan ${p.pan ?? i + 1}`, azimut: p.azimut, area: areaM2 });
+        }
+
+        if (rejected.length > 0) {
+          console.warn(`[vision] ${rejected.length} pan(s) hors limites ignorés :`, rejected);
+        }
+        if (exploitablePans.length === 0) {
+          throw new Error(`Aucun pan de toit réaliste détecté (${pans.length} polygones hors limites ${MIN_PAN_AREA_M2}-${MAX_PAN_AREA_M2}m²)`);
         }
 
         setMode('vision');
