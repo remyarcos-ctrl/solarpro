@@ -4,7 +4,7 @@ import Map, { useMap } from "react-map-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
-import { MapPin, Pencil, Trash2, RotateCcw, Layers, Plus, Building2 } from "lucide-react";
+import { MapPin, Pencil, Trash2, RotateCcw, Layers, Plus, Building2, Flame } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import SolarRoofDetector from "@/components/dossier/SolarRoofDetector";
 import * as turf from "@turf/turf";
@@ -319,6 +319,7 @@ function MapController({
   onRoofAreaChange, onMaxPanelsChange, onCaptureReady,
   onRoofDimensionsChange, solarDataRef, onDataReady, onSolarReady,
   onAIPansDetected, onAIValidateReady,
+  onFluxReady, showFlux, fluxLoading, setFluxLoading,
 }) {
   const { current: map } = useMap();
   const drawRef = useRef(null);
@@ -326,6 +327,7 @@ function MapController({
   const markersRef = useRef([]);
   const labelMarkersRef = useRef([]);
   const snapMarkerRef = useRef(null);
+  const fluxLoadedRef = useRef(false);
   const initializedRef = useRef(false);
   const pansRef = useRef([]);
   const geocodeTimerRef = useRef(null);
@@ -502,6 +504,19 @@ function MapController({
       mbMap.addSource("panels-multi", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       mbMap.addLayer({ id: "panels-fill", type: "fill", source: "panels-multi", paint: { "fill-color": ["get", "fillColor"], "fill-opacity": 0.92 } });
       mbMap.addLayer({ id: "panels-line", type: "line", source: "panels-multi", paint: { "line-color": ["get", "lineColor"], "line-width": 1.2 } });
+    }
+    if (!mbMap.getSource("solar-flux")) {
+      // Placeholder : source image, mise à jour avec coords + URL à l'arrivée des données
+      mbMap.addSource("solar-flux", {
+        type: "image",
+        url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+        coordinates: [[0,0],[0,0],[0,0],[0,0]],
+      });
+      mbMap.addLayer({
+        id: "solar-flux-layer", type: "raster", source: "solar-flux",
+        layout: { visibility: "none" },
+        paint: { "raster-opacity": 0.7, "raster-fade-duration": 0 },
+      });
     }
     if (!mbMap.getSource("bdtopo-guide")) {
       mbMap.addSource("bdtopo-guide", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
@@ -838,6 +853,59 @@ function MapController({
   }, [pans, panel, orientation]);
   useEffect(() => { if (drawRef.current) drawRef.current.options.styles = makeDrawStyles(currentPanIndex); }, [currentPanIndex]);
 
+  // Reset flux au changement d'adresse
+  useEffect(() => { fluxLoadedRef.current = false; }, [address]);
+
+  // Toggle "Flux solaire" : fetch lazy + MAJ source image + visibilité
+  useEffect(() => {
+    if (!map || !coords) return;
+    const mbMap = map.getMap();
+    const src   = mbMap.getSource("solar-flux");
+    const layer = "solar-flux-layer";
+    if (!src || !mbMap.getLayer(layer)) return;
+
+    // Visibilité synchrone
+    const vis = showFlux ? "visible" : "none";
+    if (mbMap.getLayoutProperty(layer, "visibility") !== vis) {
+      mbMap.setLayoutProperty(layer, "visibility", vis);
+    }
+    if (!showFlux) return;
+    if (fluxLoadedRef.current) return; // déjà chargé
+
+    fluxLoadedRef.current = true;
+    setFluxLoading?.(true);
+    (async () => {
+      try {
+        const r = await fetch("/api/solar-flux", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat: coords.lat, lon: coords.lon, radiusMeters: 50 }),
+        });
+        if (!r.ok) {
+          const b = await r.json().catch(() => ({}));
+          throw new Error(`HTTP ${r.status}: ${b.error || ""}`);
+        }
+        const { imageDataUrl, bounds } = await r.json();
+        if (!imageDataUrl || !bounds?.sw || !bounds?.ne) throw new Error("Payload flux invalide");
+        // Mapbox image coordinates : [TL, TR, BR, BL]
+        const { sw, ne } = bounds;
+        const coordsArr = [
+          [sw.longitude, ne.latitude],
+          [ne.longitude, ne.latitude],
+          [ne.longitude, sw.latitude],
+          [sw.longitude, sw.latitude],
+        ];
+        src.updateImage({ url: imageDataUrl, coordinates: coordsArr });
+        onFluxReady?.();
+      } catch (e) {
+        console.warn("[solar-flux]", e.message);
+        fluxLoadedRef.current = false; // permet un retry au prochain toggle
+      } finally {
+        setFluxLoading?.(false);
+      }
+    })();
+  }, [map, coords, showFlux]);
+
   useEffect(() => {
     if (!map) return;
     const mbMap = map.getMap();
@@ -1033,6 +1101,9 @@ export default function SatelliteMap({
   const [aiDetecting,     setAiDetecting]     = useState(false);
   const validateAIRef = useRef(null);
   const [selectedSolarSegs, setSelectedSolarSegs] = useState(new Set());
+  const [fluxReady,   setFluxReady]   = useState(false);
+  const [showFlux,    setShowFlux]    = useState(false);
+  const [fluxLoading, setFluxLoading] = useState(false);
   const solarDataRef = useRef(null);
   const prevPansRef  = useRef([]);
 
@@ -1045,6 +1116,9 @@ export default function SatelliteMap({
     setBdtopoBuilding(null);
     solarDataRef.current = null;
     setSelectedSolarSegs(new Set());
+    setFluxReady(false);
+    setShowFlux(false);
+    setFluxLoading(false);
   }, [address]);
 
   useEffect(() => {
@@ -1132,6 +1206,19 @@ export default function SatelliteMap({
           >
             ☀️ Solar API actif {showSolarSegs ? "▲" : "▼"}
           </button>
+        )}
+        {solarReady && (
+          <Button size="sm" variant="outline"
+            onClick={() => setShowFlux(v => !v)}
+            disabled={fluxLoading && !fluxReady}
+            className={showFlux
+              ? "border-orange-500/50 text-orange-400 bg-orange-500/10 hover:bg-orange-500/20"
+              : "border-orange-500/30 text-orange-300/80 hover:bg-orange-500/10"}
+            title="Carte de flux solaire annuel Google Solar API"
+          >
+            <Flame className="w-4 h-4 mr-1" />
+            {fluxLoading && !fluxReady ? "Chargement flux…" : (showFlux ? "Flux solaire ●" : "Flux solaire")}
+          </Button>
         )}
         {!solarReady && bdtopoBuilding && (
           <span className="text-xs px-2.5 py-1 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-300 font-medium" title="BDTOPO IGN — inclinaison depuis coordonnées 3D">
@@ -1336,6 +1423,8 @@ export default function SatelliteMap({
             onCaptureReady={onCaptureReady} onRoofDimensionsChange={onRoofDimensionsChange}
             solarDataRef={solarDataRef} onDataReady={() => setDataReady(true)}
             onSolarReady={(segs) => { setSolarReady(true); setSolarSegments(segs || []); }}
+            onFluxReady={() => setFluxReady(true)}
+            showFlux={showFlux} fluxLoading={fluxLoading} setFluxLoading={setFluxLoading}
             onAIPansDetected={(pans) => {
               if (pans === null) { setAiDetecting(true); setAiDetectedPans(null); }
               else { setAiDetecting(false); setAiDetectedPans(pans); }

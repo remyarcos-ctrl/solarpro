@@ -5,6 +5,7 @@
   ],
   "functions": {
     "api/solar-mask.js": { "memory": 1024, "maxDuration": 60 },
+    "api/solar-flux.js": { "memory": 1024, "maxDuration": 60 },
     "api/roof-vision.js": { "maxDuration": 60 }
   }
 }
