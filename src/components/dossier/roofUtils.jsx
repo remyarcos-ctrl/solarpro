@@ -136,11 +136,12 @@ export function detectPanOrientation(coordinates) {
 const GUIDE_PANEL_W_M = 1.13;
 const GUIDE_PANEL_H_M = 1.72;
 
-// Un pan de toit est "orienté Nord" si son azimut est dans [315°, 45°[
-// (secteur NW / N / NE). Ces pans sont inutilisables pour le solaire.
+// Un pan est "orienté Nord" s'il fait partie des secteurs NW, N ou NE
+// (azimut ∈ [292.5°, 67.5°[ en traversant 0°). Inutilisable en solaire.
+// Cohérent avec azimutToOrientation : NW=292.5-337.5, N=337.5-22.5, NE=22.5-67.5.
 export function isNorthFacingSegment(seg) {
   const az = (((seg?.azimuthDegrees ?? 180) % 360) + 360) % 360;
-  return az >= 315 || az < 45;
+  return az >= 292.5 || az < 67.5;
 }
 
 // Génère les features GeoJSON pour le layer "roof-guide" (orange).
