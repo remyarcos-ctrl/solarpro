@@ -321,6 +321,7 @@ function MapController({
   onAIPansDetected, onAIValidateReady,
   onFluxReady, onFluxError, showFlux, fluxLoading, setFluxLoading,
   setExcludedCount, onPlaceFromGrid,
+  rotationDelta = 0,
 }) {
   const { current: map } = useMap();
   const drawRef = useRef(null);
@@ -811,7 +812,7 @@ function MapController({
         const gHm = googleSolar.panelHeightMeters || 1.65;
         const g = buildPanelsFromGoogleSolar(
           googleSolar.solarPanels, pan.solarSegmentIdx,
-          pan.azimut ?? 180, gWm, gHm,
+          (pan.azimut ?? 180) + rotationDelta, gWm, gHm,
         );
         // Filtre : retire les panneaux exclus (ordre identique à buildRoofGuideFeatures)
         const keptPanels = [];
@@ -864,12 +865,22 @@ function MapController({
     }
     src.setData({ type: "FeatureCollection", features: allFeatures });
     window.__smPans = currentPans;
-  }, [map, panel, orientation, onRoofDimensionsChange, onMaxPanelsChange, onRoofAreaChange]);
+  }, [map, panel, orientation, rotationDelta, onRoofDimensionsChange, onMaxPanelsChange, onRoofAreaChange]);
 
   useEffect(() => {
     if (updateDebounceRef.current) clearTimeout(updateDebounceRef.current);
     updateDebounceRef.current = setTimeout(() => updatePanelsOnMap(), 80);
-  }, [pans, panel, orientation, gridVersion]);
+  }, [pans, panel, orientation, gridVersion, rotationDelta]);
+
+  // Rotation globale : re-feed le guide orange avec le nouveau delta
+  useEffect(() => {
+    if (!map || !solarDataRef.current) return;
+    const mbMap = map.getMap();
+    const src = mbMap.getSource("bdtopo-guide");
+    if (!src) return;
+    const feats = buildRoofGuideFeatures(solarDataRef.current, rotationDelta);
+    if (feats.length > 0) src.setData({ type: "FeatureCollection", features: feats });
+  }, [map, rotationDelta, gridVersion]);
   useEffect(() => { if (drawRef.current) drawRef.current.options.styles = makeDrawStyles(currentPanIndex); }, [currentPanIndex]);
 
   // Reset exclusions au changement d'adresse
@@ -1217,6 +1228,7 @@ export default function SatelliteMap({
   const [fluxError,   setFluxError]   = useState(null);
   const [excludedCount, setExcludedCount] = useState(0);
   const [placementStats, setPlacementStats] = useState({ totalPanels: 0, totalYearlyKwh: 0 });
+  const [rotationDelta, setRotationDelta] = useState(0);
   const solarDataRef = useRef(null);
   const prevPansRef  = useRef([]);
 
@@ -1235,6 +1247,7 @@ export default function SatelliteMap({
     setFluxError(null);
     setExcludedCount(0);
     setPlacementStats({ totalPanels: 0, totalYearlyKwh: 0 });
+    setRotationDelta(0);
   }, [address]);
 
   useEffect(() => {
@@ -1348,6 +1361,26 @@ export default function SatelliteMap({
                 ⚠️ Flux : {fluxError}
               </span>
             )}
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-orange-500/5 border border-orange-500/20">
+              <span className="text-xs text-muted-foreground">↻</span>
+              <input
+                type="range" min={-45} max={45} step={1}
+                value={rotationDelta}
+                onChange={(e) => setRotationDelta(Number(e.target.value))}
+                className="w-24 accent-orange-500 cursor-pointer"
+                title="Rotation globale des panneaux (-45° à +45° vs azimut natif)"
+              />
+              <span className="text-xs text-orange-300 font-mono w-10 text-right">
+                {rotationDelta > 0 ? "+" : ""}{rotationDelta}°
+              </span>
+              {rotationDelta !== 0 && (
+                <button
+                  onClick={() => setRotationDelta(0)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  title="Réinitialiser"
+                >↺</button>
+              )}
+            </div>
             {placementStats.totalPanels > 0 && (
               <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono">
                 {placementStats.totalPanels} panneaux · {Math.round(placementStats.totalPanels * (panel?.power_wc || 410) / 10) / 100} kWc · {placementStats.totalYearlyKwh} kWh/an
@@ -1563,6 +1596,7 @@ export default function SatelliteMap({
             showFlux={showFlux} fluxLoading={fluxLoading} setFluxLoading={setFluxLoading}
             setExcludedCount={setExcludedCount}
             onPlaceFromGrid={setPlacementStats}
+            rotationDelta={rotationDelta}
             onAIPansDetected={(pans) => {
               if (pans === null) { setAiDetecting(true); setAiDetectedPans(null); }
               else { setAiDetecting(false); setAiDetectedPans(pans); }

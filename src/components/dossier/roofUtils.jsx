@@ -150,7 +150,7 @@ export function isNorthFacingSegment(seg) {
 // la démo Google. Aucun recouvrement entre pans puisque les panneaux sont
 // des positions GPS distinctes.
 // Fallback : footprint BDTOPO si Solar API indisponible.
-export function buildRoofGuideFeatures(solarData) {
+export function buildRoofGuideFeatures(solarData, rotationDelta = 0) {
   const sp     = solarData?.solarPotential;
   const panels = sp?.solarPanels;
   const segs   = sp?.roofSegmentStats;
@@ -159,7 +159,7 @@ export function buildRoofGuideFeatures(solarData) {
     const features = [];
     for (let i = 0; i < segs.length; i++) {
       if (isNorthFacingSegment(segs[i])) continue; // pan Nord → exclu
-      const az = segs[i].azimuthDegrees ?? 180;
+      const az = (segs[i].azimuthDegrees ?? 180) + rotationDelta;
       const { panels: rects } = buildPanelsFromGoogleSolar(
         panels, i, az, GUIDE_PANEL_W_M, GUIDE_PANEL_H_M,
       );
