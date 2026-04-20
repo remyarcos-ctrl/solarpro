@@ -238,11 +238,19 @@ export function buildPanelGridRotated(
       );
     }
 
-    // Panneau entièrement à l'intérieur et hors obstacles : 4 coins + centre
+    // Panneau entièrement à l'intérieur et hors obstacles.
+    // ÉROSION 10 cm : on teste les coins rétrécis vers l'intérieur + 4 mi-arêtes
+    // pour rejeter les panneaux qui touchent le bord (sinon débordement visuel).
+    const INSET = 0.10;
     function panelInside(x, y, pw, ph) {
-      return pip(x,      y     ) && pip(x + pw, y     ) &&
-             pip(x + pw, y + ph) && pip(x,      y + ph) &&
-             pip(x + pw/2, y + ph/2) &&
+      const xi0 = x + INSET,      yi0 = y + INSET;
+      const xi1 = x + pw - INSET, yi1 = y + ph - INSET;
+      const xm  = x + pw / 2,     ym  = y + ph / 2;
+      return pip(xi0, yi0) && pip(xi1, yi0) &&
+             pip(xi1, yi1) && pip(xi0, yi1) &&
+             pip(xm,  yi0) && pip(xm,  yi1) &&
+             pip(xi0, ym ) && pip(xi1, ym ) &&
+             pip(xm,  ym ) &&
              !panelHitsObstacle(x, y, pw, ph);
     }
 
@@ -292,7 +300,10 @@ export function buildPanelGridRotated(
     }
     if (orient === "paysage") { panels = paysage; bestPw = pwL; bestPh = phL; bestOrient = "paysage"; }
 
-    // ── 6. Reconversion GPS + filtre strict turf.booleanContains ─────────
+    // ── 6. Reconversion GPS + filtre ratio d'aire ≥ 99.5% ────────────────
+    // booleanContains renvoie false quand le panneau touche un bord (cas fréquent
+    // avec le scan de phase). On utilise turf.intersect + ratio d'aire : robuste
+    // aux cas limites de précision GPS.
     const gpsGridsRaw = panels.slice(0, maxN).map(([x, y]) => [
       toGPS(x,          y         ),
       toGPS(x + bestPw, y         ),
@@ -303,7 +314,11 @@ export function buildPanelGridRotated(
 
     const gpsGrids = gpsGridsRaw.filter(corners => {
       try {
-        return turf.booleanContains(polygon, turf.polygon([corners]));
+        const panelPoly = turf.polygon([corners]);
+        const panelArea = turf.area(panelPoly);
+        const inter = turf.intersect(turf.featureCollection([polygon, panelPoly]));
+        if (!inter) return false;
+        return turf.area(inter) / panelArea >= 0.995;
       } catch {
         return false;
       }

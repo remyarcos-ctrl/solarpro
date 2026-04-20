@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C C:/Users/Compta-02/solarpro add src/components/dossier/SatelliteMap.jsx src/components/dossier/SolarRoofDetector.jsx src/components/dossier/roofUtils.jsx)",
+      "Bash(git -C C:/Users/Compta-02/solarpro commit -m ' *)",
+      "Bash(git *)",
+      "Bash(npm run *)"
+    ]
+  }
+}

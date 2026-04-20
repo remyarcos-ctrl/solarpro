@@ -17,7 +17,9 @@ export default async function handler(req, res) {
 
   try {
     // 1. Fetch image satellite depuis Mapbox Static API
-    const imageUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lon},${lat},19,0/800x600?access_token=${mapboxToken}`;
+    // Zoom 20 + 640×480 = ~66×50 m au sol (1 maison + marge, évite le pâté).
+    // ⚠️ Ces constantes DOIVENT rester synchronisées avec SolarRoofDetector.jsx
+    const imageUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lon},${lat},20,0/640x480?access_token=${mapboxToken}`;
     const imageRes = await fetch(imageUrl, { signal: AbortSignal.timeout(10000) });
     if (!imageRes.ok) throw new Error(`Mapbox Static HTTP ${imageRes.status}`);
     const imageBuffer = await imageRes.arrayBuffer();

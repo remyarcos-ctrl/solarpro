@@ -5,8 +5,9 @@ import { azimutToOrientation } from "./roofUtils";
 function visionEndpoint() { return '/api/roof-vision'; }
 function maskEndpoint()   { return '/api/solar-mask';  }
 
-// ── Bounds GPS de l'image Mapbox Static (800×600 @ zoom 19) ─────────────
-function staticImageBounds(lat, lon, zoom = 19, w = 800, h = 600) {
+// ── Bounds GPS de l'image Mapbox Static (640×480 @ zoom 20) ─────────────
+// ⚠️ DOIVENT être synchronisés avec api/roof-vision.js
+function staticImageBounds(lat, lon, zoom = 20, w = 640, h = 480) {
   const mPerPx = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
   const halfW  = (w / 2) * mPerPx;
   const halfH  = (h / 2) * mPerPx;
@@ -88,13 +89,16 @@ Retourne UNIQUEMENT ce JSON (sans markdown) :
 
 // ── Vision seule : pans en % de l'image (0-100) ──────────────────────────
 async function analyzeRoofWithVision(coords) {
-  const prompt = `Identifie tous les pans de toit visibles sur cette image satellite (tuile rouge, ardoise grise, zinc).
-Pour chacun, donne les coordonnées des 4 coins (ou plus) en POURCENTAGE de l'image (0-100).
-x = 0 à gauche, 100 à droite. y = 0 en haut, 100 en bas.
-Suis précisément les arêtes du toit — ne déborde pas au-delà du bâtiment.
+  const prompt = `Image satellite centrée sur UN bâtiment précis (au centre exact de l'image).
+Identifie UNIQUEMENT les pans de toit de ce bâtiment central.
+⛔ IGNORE les bâtiments voisins, annexes, garages détachés, bâtiments en bord d'image.
 
-Retourne UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
-{"pans":[{"pan":1,"points":[{"x":10,"y":20},{"x":40,"y":20},{"x":40,"y":60},{"x":10,"y":60}]}],"confiance":85}`;
+Pour chaque pan du bâtiment central, donne les coins (3 à 6 points) en POURCENTAGE de l'image.
+x = 0 (gauche) à 100 (droite). y = 0 (haut) à 100 (bas).
+Suis exactement l'arête du toit, NE DÉBORDE PAS sur les murs ni sur le sol.
+
+Retourne UNIQUEMENT ce JSON (pas de markdown, pas de commentaire) :
+{"pans":[{"pan":1,"points":[{"x":42,"y":38},{"x":58,"y":38},{"x":58,"y":58},{"x":42,"y":58}]}],"confiance":85}`;
 
   return callVision(coords, prompt);
 }
