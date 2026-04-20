@@ -328,6 +328,7 @@ function MapController({
   const labelMarkersRef = useRef([]);
   const snapMarkerRef = useRef(null);
   const fluxLoadedRef = useRef(false);
+  const fluxBlobUrlRef = useRef(null);
   const initializedRef = useRef(false);
   const pansRef = useRef([]);
   const geocodeTimerRef = useRef(null);
@@ -853,8 +854,14 @@ function MapController({
   }, [pans, panel, orientation]);
   useEffect(() => { if (drawRef.current) drawRef.current.options.styles = makeDrawStyles(currentPanIndex); }, [currentPanIndex]);
 
-  // Reset flux au changement d'adresse
-  useEffect(() => { fluxLoadedRef.current = false; }, [address]);
+  // Reset flux au changement d'adresse (révoque aussi le blob URL précédent)
+  useEffect(() => {
+    fluxLoadedRef.current = false;
+    if (fluxBlobUrlRef.current) {
+      URL.revokeObjectURL(fluxBlobUrlRef.current);
+      fluxBlobUrlRef.current = null;
+    }
+  }, [address]);
 
   // Toggle "Flux solaire" : fetch lazy + MAJ source image + visibilité
   useEffect(() => {
@@ -885,21 +892,25 @@ function MapController({
           const b = await r.json().catch(() => ({}));
           throw new Error(`HTTP ${r.status}: ${b.error || ""}`);
         }
-        const { imageDataUrl, bounds } = await r.json();
-        if (!imageDataUrl || !bounds?.sw || !bounds?.ne) throw new Error("Payload flux invalide");
+        const boundsHdr = r.headers.get("X-Bounds");
+        if (!boundsHdr) throw new Error("X-Bounds manquant");
+        const [swLat, swLon, neLat, neLon] = boundsHdr.split(",").map(Number);
+        const blob = await r.blob();
+        const url  = URL.createObjectURL(blob);
+        if (fluxBlobUrlRef.current) URL.revokeObjectURL(fluxBlobUrlRef.current);
+        fluxBlobUrlRef.current = url;
         // Mapbox image coordinates : [TL, TR, BR, BL]
-        const { sw, ne } = bounds;
         const coordsArr = [
-          [sw.longitude, ne.latitude],
-          [ne.longitude, ne.latitude],
-          [ne.longitude, sw.latitude],
-          [sw.longitude, sw.latitude],
+          [swLon, neLat],
+          [neLon, neLat],
+          [neLon, swLat],
+          [swLon, swLat],
         ];
-        src.updateImage({ url: imageDataUrl, coordinates: coordsArr });
+        src.updateImage({ url, coordinates: coordsArr });
         onFluxReady?.();
       } catch (e) {
         console.warn("[solar-flux]", e.message);
-        fluxLoadedRef.current = false; // permet un retry au prochain toggle
+        fluxLoadedRef.current = false;
       } finally {
         setFluxLoading?.(false);
       }

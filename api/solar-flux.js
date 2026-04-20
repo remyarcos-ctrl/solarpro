@@ -104,20 +104,27 @@ export default async function handler(req, res) {
       rgba[i * 4 + 3] = 255;
     }
 
-    // ── 6. Encodage PNG ──────────────────────────────────────────────────
-    const pngBuf = await sharp(rgba, { raw: { width: W, height: H, channels: 4 } })
-      .png({ compressionLevel: 8 })
-      .toBuffer();
-    const dataUrl = `data:image/png;base64,${pngBuf.toString('base64')}`;
+    // ── 6. Downscale (max 512 px long edge) + encodage PNG ───────────────
+    // Évite le freeze client : payload ~150 KB au lieu de 2-4 MB.
+    const MAX_SIDE = 512;
+    const scale = Math.min(1, MAX_SIDE / Math.max(W, H));
+    const outW  = Math.max(1, Math.round(W * scale));
+    const outH  = Math.max(1, Math.round(H * scale));
 
-    return res.json({
-      imageDataUrl: dataUrl,
-      bounds: boundingBox,
-      width: W, height: H,
-      minFlux: Math.round(minFlux),
-      maxFlux: Math.round(maxFlux),
-      imageryDate: layers.imageryDate ?? null,
-    });
+    let pipeline = sharp(rgba, { raw: { width: W, height: H, channels: 4 } });
+    if (scale < 1) pipeline = pipeline.resize(outW, outH, { kernel: 'nearest' });
+    const pngBuf = await pipeline.png({ compressionLevel: 9 }).toBuffer();
+
+    // ── 7. Réponse : PNG binaire + bounds en headers (pas de JSON base64) ─
+    const { sw, ne } = boundingBox;
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('X-Bounds', `${sw.latitude},${sw.longitude},${ne.latitude},${ne.longitude}`);
+    res.setHeader('X-Flux-Min', String(Math.round(minFlux)));
+    res.setHeader('X-Flux-Max', String(Math.round(maxFlux)));
+    res.setHeader('X-Width',  String(outW));
+    res.setHeader('X-Height', String(outH));
+    return res.status(200).send(pngBuf);
 
   } catch (e) {
     console.error('[solar-flux]', e.message, e.stack?.split('\n')[0]);
