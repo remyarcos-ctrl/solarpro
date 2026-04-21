@@ -1,4 +1,6 @@
 import * as turf from "@turf/turf";
+// Source unique des tables solaires — voir src/lib/solarCalculations.js
+export { getSolarCoefficient, getShadingFactor, SOLAR_COEFF_TABLE, SHADING_FACTORS } from "@/lib/solarCalculations";
 
 // ── Couleurs par pan ──────────────────────────────────────────────────────
 export const PAN_COLORS = [
@@ -19,28 +21,6 @@ export const ORIENTATIONS = [
 ];
 
 export const INCLINATIONS = [0, 10, 15, 20, 30, 35, 40, 45];
-
-// ── Coefficient de rendement solaire ─────────────────────────────────────
-export function getSolarCoefficient(orientation, inclination) {
-  const coeffTable = {
-    S:  { 0: 0.870, 10: 0.930, 15: 0.960, 20: 0.980, 30: 1.000, 35: 1.000, 40: 0.995, 45: 0.975 },
-    SE: { 0: 0.870, 10: 0.910, 15: 0.935, 20: 0.950, 30: 0.960, 35: 0.960, 40: 0.950, 45: 0.930 },
-    SW: { 0: 0.870, 10: 0.910, 15: 0.935, 20: 0.950, 30: 0.960, 35: 0.960, 40: 0.950, 45: 0.930 },
-    E:  { 0: 0.870, 10: 0.840, 15: 0.820, 20: 0.800, 30: 0.760, 35: 0.740, 40: 0.720, 45: 0.695 },
-    W:  { 0: 0.870, 10: 0.840, 15: 0.820, 20: 0.800, 30: 0.760, 35: 0.740, 40: 0.720, 45: 0.695 },
-    NE: { 0: 0.870, 10: 0.790, 15: 0.760, 20: 0.730, 30: 0.680, 35: 0.655, 40: 0.630, 45: 0.600 },
-    NW: { 0: 0.870, 10: 0.790, 15: 0.760, 20: 0.730, 30: 0.680, 35: 0.655, 40: 0.630, 45: 0.600 },
-    N:  { 0: 0.870, 10: 0.740, 15: 0.700, 20: 0.665, 30: 0.610, 35: 0.585, 40: 0.560, 45: 0.535 },
-  };
-  const row = coeffTable[orientation] || coeffTable["S"];
-  const angles = Object.keys(row).map(Number).sort((a, b) => a - b);
-  const inc = Math.max(0, Math.min(45, inclination || 0));
-  const lower = angles.filter(a => a <= inc).pop() ?? angles[0];
-  const upper = angles.filter(a => a >= inc)[0] ?? angles[angles.length - 1];
-  if (lower === upper) return row[lower];
-  const t = (inc - lower) / (upper - lower);
-  return Math.round((row[lower] + t * (row[upper] - row[lower])) * 1000) / 1000;
-}
 
 export function getPanRecommendation(coef) {
   if (coef >= 0.95) return { label: "Optimal ✅",     icon: "✅", color: "text-emerald-400", bg: "bg-emerald-500/15" };

@@ -3,18 +3,13 @@ import { Plus, Copy, Trash2, Printer, ChevronDown, ChevronUp } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { calculateProfitability } from "@/lib/solarCalculations";
+import { calculateProfitability, SHADING_OPTIONS as BASE_SHADING_OPTIONS } from "@/lib/solarCalculations";
 
-const SHADING_OPTIONS = [
-  { value: "none",          label: "Aucun (100%)" },
-  { value: "tree_far",      label: "Arbres éloignés (97%)" },
-  { value: "tree_near",     label: "Arbres proches (90%)" },
-  { value: "building_far",  label: "Bâtiment éloigné (95%)" },
-  { value: "building_near", label: "Bâtiment proche (85%)" },
-  { value: "chimney",       label: "Cheminée (97%)" },
-  { value: "dormer",        label: "Lucarne (94%)" },
-  { value: "heavy",         label: "Ombrage important (75%)" },
-];
+// Enrichit les labels avec le % pour l'affichage comparateur
+const SHADING_OPTIONS = BASE_SHADING_OPTIONS.map(o => ({
+  value: o.value,
+  label: `${o.label} (${Math.round(o.factor * 100)}%)`,
+}));
 
 const INCL_OPTIONS = [0, 10, 15, 20, 30, 35, 40, 45];
 

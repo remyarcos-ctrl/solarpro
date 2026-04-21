@@ -73,7 +73,8 @@ export const DEFAULT_PANELS = [
 // ── Table de rendement solaire par orientation + inclinaison ──────────────
 // Source : PVGIS France, latitude moyenne 46°
 // Référence : Sud 30° = 1.000
-const SOLAR_COEFF_TABLE = {
+// ⚠️ SOURCE UNIQUE — ne pas dupliquer (historique : 3 copies identiques retirées)
+export const SOLAR_COEFF_TABLE = {
   S:  { 0: 0.870, 10: 0.930, 15: 0.960, 20: 0.980, 30: 1.000, 35: 1.000, 40: 0.995, 45: 0.975 },
   SE: { 0: 0.870, 10: 0.910, 15: 0.935, 20: 0.950, 30: 0.960, 35: 0.960, 40: 0.950, 45: 0.930 },
   SW: { 0: 0.870, 10: 0.910, 15: 0.935, 20: 0.950, 30: 0.960, 35: 0.960, 40: 0.950, 45: 0.930 },
@@ -84,17 +85,22 @@ const SOLAR_COEFF_TABLE = {
   N:  { 0: 0.870, 10: 0.740, 15: 0.700, 20: 0.665, 30: 0.610, 35: 0.585, 40: 0.560, 45: 0.535 },
 };
 
-// Facteur d'ombrage par type d'obstacle
-const SHADING_FACTORS = {
-  none:          1.00,
-  tree_far:      0.97,
-  tree_near:     0.90,
-  building_far:  0.95,
-  building_near: 0.85,
-  chimney:       0.97,
-  dormer:        0.94,
-  heavy:         0.75,
-};
+// Options d'ombrage (factor + label pour UI Select). Source unique.
+export const SHADING_OPTIONS = [
+  { value: "none",          label: "Aucun obstacle",      factor: 1.00 },
+  { value: "tree_far",      label: "Arbres éloignés",     factor: 0.97 },
+  { value: "tree_near",     label: "Arbres proches",      factor: 0.90 },
+  { value: "building_far",  label: "Bâtiment éloigné",    factor: 0.95 },
+  { value: "building_near", label: "Bâtiment proche",     factor: 0.85 },
+  { value: "chimney",       label: "Cheminée sur toit",   factor: 0.97 },
+  { value: "dormer",        label: "Lucarne / Velux",     factor: 0.94 },
+  { value: "heavy",         label: "Ombrage important",   factor: 0.75 },
+];
+
+// Facteur d'ombrage par type d'obstacle (derivé de SHADING_OPTIONS)
+export const SHADING_FACTORS = Object.fromEntries(
+  SHADING_OPTIONS.map(o => [o.value, o.factor])
+);
 
 export function getSolarCoefficient(orientation, inclination) {
   const row = SOLAR_COEFF_TABLE[orientation] || SOLAR_COEFF_TABLE['S'];

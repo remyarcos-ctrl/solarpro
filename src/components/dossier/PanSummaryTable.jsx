@@ -1,22 +1,8 @@
 import React, { useState } from "react";
 import { Trash2, ChevronDown, ChevronUp, Info } from "lucide-react";
-import { ORIENTATIONS, getSolarCoefficient, getPanRecommendation, PAN_COLORS } from "./roofUtils";
+import { ORIENTATIONS, getPanRecommendation, PAN_COLORS } from "./roofUtils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-const SHADING_OPTIONS = [
-  { value: "none",          label: "Aucun obstacle",      factor: 1.00 },
-  { value: "tree_far",      label: "Arbres éloignés",     factor: 0.97 },
-  { value: "tree_near",     label: "Arbres proches",      factor: 0.90 },
-  { value: "building_far",  label: "Bâtiment éloigné",    factor: 0.95 },
-  { value: "building_near", label: "Bâtiment proche",     factor: 0.85 },
-  { value: "chimney",       label: "Cheminée sur toit",   factor: 0.97 },
-  { value: "dormer",        label: "Lucarne / Velux",     factor: 0.94 },
-  { value: "heavy",         label: "Ombrage important",   factor: 0.75 },
-];
-
-function getShadingFactor(shadingType) {
-  return SHADING_OPTIONS.find(o => o.value === shadingType)?.factor || 1.0;
-}
+import { SHADING_OPTIONS, getShadingFactor, getSolarCoefficient } from "@/lib/solarCalculations";
 
 export default function PanSummaryTable({ pans, onUpdatePan, onDeletePan, panel, settings, pvgisData, solarSegments }) {
   const [expandedPan, setExpandedPan] = useState(null);

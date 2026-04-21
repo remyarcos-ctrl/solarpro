@@ -43,42 +43,9 @@ function getRegionalTemp(lat) {
   return 9;
 }
 
-// ── Coefficient d'orientation précis (table complète) ────────────────────
-export function getSolarCoefficient(orientation, inclination) {
-  const coeffTable = {
-    S:  { 0: 0.870, 10: 0.930, 15: 0.960, 20: 0.980, 30: 1.000, 35: 1.000, 40: 0.995, 45: 0.975 },
-    SE: { 0: 0.870, 10: 0.910, 15: 0.935, 20: 0.950, 30: 0.960, 35: 0.960, 40: 0.950, 45: 0.930 },
-    SW: { 0: 0.870, 10: 0.910, 15: 0.935, 20: 0.950, 30: 0.960, 35: 0.960, 40: 0.950, 45: 0.930 },
-    E:  { 0: 0.870, 10: 0.840, 15: 0.820, 20: 0.800, 30: 0.760, 35: 0.740, 40: 0.720, 45: 0.695 },
-    W:  { 0: 0.870, 10: 0.840, 15: 0.820, 20: 0.800, 30: 0.760, 35: 0.740, 40: 0.720, 45: 0.695 },
-    NE: { 0: 0.870, 10: 0.790, 15: 0.760, 20: 0.730, 30: 0.680, 35: 0.655, 40: 0.630, 45: 0.600 },
-    NW: { 0: 0.870, 10: 0.790, 15: 0.760, 20: 0.730, 30: 0.680, 35: 0.655, 40: 0.630, 45: 0.600 },
-    N:  { 0: 0.870, 10: 0.740, 15: 0.700, 20: 0.665, 30: 0.610, 35: 0.585, 40: 0.560, 45: 0.535 },
-  };
-  const row = coeffTable[orientation] || coeffTable['S'];
-  const angles = Object.keys(row).map(Number).sort((a, b) => a - b);
-  const inc = Math.max(0, Math.min(45, inclination || 0));
-  const lower = angles.filter(a => a <= inc).pop() || angles[0];
-  const upper = angles.filter(a => a >= inc)[0] || angles[angles.length - 1];
-  if (lower === upper) return row[lower];
-  const t = (inc - lower) / (upper - lower);
-  return row[lower] + t * (row[upper] - row[lower]);
-}
-
-// ── Facteur d'ombrage par catégorie ───────────────────────────────────────
-export function getShadingFactor(obstacleType = 'none') {
-  const factors = {
-    none:          1.00,
-    tree_far:      0.97,
-    tree_near:     0.90,
-    building_far:  0.95,
-    building_near: 0.85,
-    chimney:       0.97,
-    dormer:        0.94,
-    heavy:         0.75,
-  };
-  return factors[obstacleType] || 1.0;
-}
+// ── Coefficient d'orientation + facteur d'ombrage ────────────────────────
+// Source unique : src/lib/solarCalculations.js
+export { getSolarCoefficient, getShadingFactor } from "./solarCalculations";
 
 // ── Production mensuelle réaliste ─────────────────────────────────────────
 export function getMonthlyProduction(annualKwh, lat = 46) {
