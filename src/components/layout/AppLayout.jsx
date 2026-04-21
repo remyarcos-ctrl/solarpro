@@ -6,7 +6,8 @@ export default function AppLayout() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="ml-64 min-h-screen">
+      {/* Desktop : sidebar fixe à gauche (ml-64). Mobile : bottom bar → pb-20 */}
+      <main className="md:ml-64 min-h-screen pb-20 md:pb-0">
         <Outlet />
       </main>
     </div>

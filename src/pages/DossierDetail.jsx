@@ -18,6 +18,7 @@ import SolarAI from "@/components/dossier/SolarAI";
 import { fetchPVGISData, fetchRegionalAids, fetchEDFPrice } from "@/lib/pvgisApi";
 import { estimateConsumption } from "@/lib/consumptionEstimate";
 import { fetchCO2Factor } from "@/lib/gridData";
+import { fetchCommunePvStats } from "@/lib/pvRegistryApi";
 import ScenarioComparator from "@/components/dossier/ScenarioComparator";
 
 export default function DossierDetail() {
@@ -34,6 +35,7 @@ export default function DossierDetail() {
   const [consoEstimate, setConsoEstimate] = useState(null);
   const [consoLoading,  setConsoLoading]  = useState(false);
   const [co2Factor,     setCo2Factor]     = useState(null);
+  const [communePvStats, setCommunePvStats] = useState(null);
   // Persistance : les 3 états lifted ici pour survivre aux reload
   const [excludedPanelIds, setExcludedPanelIds] = useState([]);
   const [rotationDelta,    setRotationDelta]    = useState(0);
@@ -73,6 +75,12 @@ export default function DossierDetail() {
     if (co2Factor) return;
     fetchCO2Factor().then(setCo2Factor);
   }, []);
+
+  // Stats PV de la commune (ENEDIS registre national) — cache 30 jours
+  useEffect(() => {
+    if (!data?.address || communePvStats) return;
+    fetchCommunePvStats(data.address).then(setCommunePvStats);
+  }, [data?.address]);
 
   // Estimation auto de la conso à partir de l'adresse (ADEME DPE + ENEDIS)
   useEffect(() => {
@@ -239,6 +247,18 @@ export default function DossierDetail() {
           <div className="rounded-xl bg-card border border-border p-6">
             <h2 className="text-lg font-semibold mb-4">Informations client</h2>
             <ClientForm data={data} onChange={setData} />
+            {communePvStats && (
+              <div className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm">
+                <div className="font-semibold text-emerald-300 mb-1">
+                  📊 {communePvStats.commune} — déjà {communePvStats.nbInstallations.toLocaleString('fr-FR')} installations photovoltaïques
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Puissance totale déployée : <strong className="text-emerald-300">{communePvStats.puissanceTotaleKw.toLocaleString('fr-FR')} kWc</strong>
+                  {' '}· moyenne par foyer : <strong>{communePvStats.puissanceMoyenneKwc} kWc</strong>
+                  {' '}— <span className="italic">source ENEDIS (registre national)</span>
+                </div>
+              </div>
+            )}
           </div>
           <div className="rounded-xl bg-card border border-border p-6">
             <h2 className="text-lg font-semibold mb-4">Configuration panneaux</h2>

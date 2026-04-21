@@ -26,5 +26,23 @@ export default defineConfig({
   },
   plugins: [
     react(),
-  ]
+  ],
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'pdf-libs':    ['jspdf', 'html2canvas'],
+          'chart-libs':  ['recharts'],
+          'map-libs':    ['mapbox-gl', '@mapbox/mapbox-gl-draw', 'react-map-gl'],
+          'turf-libs':   ['@turf/turf'],
+          'radix-libs':  [
+            '@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu',
+            '@radix-ui/react-select', '@radix-ui/react-popover',
+            '@radix-ui/react-slot', '@radix-ui/react-tabs',
+          ],
+        },
+      },
+    },
+  },
 });

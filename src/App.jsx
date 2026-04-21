@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "sonner"
 import { QueryClientProvider } from '@tanstack/react-query'
@@ -9,10 +10,18 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
 import AppLayout from '@/components/layout/AppLayout';
 import Dashboard from '@/pages/Dashboard';
-import NewDossier from '@/pages/NewDossier';
-import DossierDetail from '@/pages/DossierDetail';
-import PanelLibrary from '@/pages/PanelLibrary';
-import Settings from '@/pages/Settings';
+// Lazy-load : NewDossier + DossierDetail importent Mapbox/jspdf/recharts
+// (~ 3 MB) → on ne les charge pas pour la page Dashboard d'accueil.
+const NewDossier    = lazy(() => import('@/pages/NewDossier'));
+const DossierDetail = lazy(() => import('@/pages/DossierDetail'));
+const PanelLibrary  = lazy(() => import('@/pages/PanelLibrary'));
+const Settings      = lazy(() => import('@/pages/Settings'));
+
+const PageLoader = () => (
+  <div className="flex items-center justify-center h-[60vh]">
+    <div className="w-6 h-6 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+  </div>
+);
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -35,16 +44,18 @@ const AuthenticatedApp = () => {
   }
 
   return (
-    <Routes>
-      <Route element={<AppLayout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/nouveau-dossier" element={<NewDossier />} />
-        <Route path="/dossier/:id" element={<DossierDetail />} />
-        <Route path="/panneaux" element={<PanelLibrary />} />
-        <Route path="/parametres" element={<Settings />} />
-      </Route>
-      <Route path="*" element={<PageNotFound />} />
-    </Routes>
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/nouveau-dossier" element={<NewDossier />} />
+          <Route path="/dossier/:id" element={<DossierDetail />} />
+          <Route path="/panneaux" element={<PanelLibrary />} />
+          <Route path="/parametres" element={<Settings />} />
+        </Route>
+        <Route path="*" element={<PageNotFound />} />
+      </Routes>
+    </Suspense>
   );
 };
 
