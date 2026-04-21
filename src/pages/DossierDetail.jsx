@@ -214,29 +214,32 @@ export default function DossierDetail() {
   return (
     <div className="p-6 lg:p-8 max-w-[1900px] mx-auto">
 
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8 fade-in-up">
         <div className="flex items-center gap-4">
-          <Link to="/"><Button variant="ghost" size="icon"><ArrowLeft className="w-5 h-5" /></Button></Link>
+          <Link to="/"><Button variant="ghost" size="icon" className="hover:bg-secondary/60"><ArrowLeft className="w-5 h-5" /></Button></Link>
           <div>
-            <h1 className="text-3xl font-bold">{data.first_name} {data.last_name}</h1>
-            <p className="text-muted-foreground mt-1 flex items-center gap-2">
-              Dossier client
-              {pvgisData && <span className="text-xs text-emerald-400">· 🛰️ Données réelles PVGIS</span>}
-              {aidData && <span className="text-xs text-primary">· {aidData.region}</span>}
+            <p className="text-xs uppercase tracking-[0.2em] text-primary/80 font-semibold mb-1">Dossier client</p>
+            <h1 className="text-3xl md:text-4xl font-display font-bold tracking-tight">
+              <span className="text-foreground">{data.first_name}</span>{' '}
+              <span className="gradient-text">{data.last_name}</span>
+            </h1>
+            <p className="text-muted-foreground mt-1.5 flex items-center gap-2 text-sm">
+              {pvgisData && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px]">🛰️ PVGIS</span>}
+              {aidData && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px]">{aidData.region}</span>}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <ExportPdfButton client={data} panel={selectedPanel} profitability={profitability} settings={settingsWithPVGIS} pans={pans} pvgisData={pvgisData} />
           <Button variant="outline" size="sm" onClick={() => deleteMutation.mutate()}
             className="text-destructive border-destructive/30 hover:bg-destructive/10">
             <Trash2 className="w-4 h-4 mr-1" /> Supprimer
           </Button>
-          <Button onClick={handleSave} disabled={updateMutation.isPending}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 font-semibold">
+          <button onClick={handleSave} disabled={updateMutation.isPending}
+            className="btn-primary-glow inline-flex items-center gap-2 font-semibold px-5 py-2 rounded-lg text-sm disabled:opacity-60">
             <Save className="w-4 h-4" />
-            {updateMutation.isPending ? "Sauvegarde..." : "Sauvegarder"}
-          </Button>
+            {updateMutation.isPending ? "Sauvegarde…" : "Sauvegarder"}
+          </button>
         </div>
       </div>
 

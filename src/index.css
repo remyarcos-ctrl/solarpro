@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,20 +7,21 @@
 @layer base {
   :root {
     --font-inter: 'Inter', sans-serif;
-    --background: 220 20% 7%;
-    --foreground: 40 20% 95%;
-    --card: 220 18% 10%;
-    --card-foreground: 40 20% 95%;
-    --popover: 220 18% 10%;
-    --popover-foreground: 40 20% 95%;
-    --primary: 38 78% 52%;
-    --primary-foreground: 220 20% 7%;
-    --secondary: 220 15% 15%;
-    --secondary-foreground: 40 20% 90%;
-    --muted: 220 15% 15%;
-    --muted-foreground: 220 10% 55%;
-    --accent: 38 78% 52%;
-    --accent-foreground: 220 20% 7%;
+    --font-display: 'Outfit', 'Inter', sans-serif;
+    --background: 222 24% 5%;
+    --foreground: 40 20% 96%;
+    --card: 222 22% 9%;
+    --card-foreground: 40 20% 96%;
+    --popover: 222 22% 9%;
+    --popover-foreground: 40 20% 96%;
+    --primary: 38 82% 55%;
+    --primary-foreground: 222 24% 5%;
+    --secondary: 222 20% 14%;
+    --secondary-foreground: 40 20% 92%;
+    --muted: 222 20% 14%;
+    --muted-foreground: 220 12% 60%;
+    --accent: 38 82% 55%;
+    --accent-foreground: 222 24% 5%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
     --border: 220 15% 18%;
@@ -82,22 +83,108 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    scroll-behavior: smooth;
+  }
   body {
-    @apply bg-background text-foreground font-inter;
+    @apply bg-background text-foreground font-inter antialiased;
+    background-image:
+      radial-gradient(ellipse 70% 50% at 20% -10%, hsl(38 82% 55% / 0.10), transparent 60%),
+      radial-gradient(ellipse 60% 50% at 80% 100%, hsl(38 82% 55% / 0.06), transparent 60%),
+      linear-gradient(180deg, hsl(222 24% 5%), hsl(222 26% 4%));
+    background-attachment: fixed;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
   }
 }
 
-/* Custom scrollbar */
+@layer components {
+  /* Cards premium avec profondeur + légère lueur bord haut */
+  .card-elevated {
+    @apply rounded-xl border border-border bg-card;
+    background-image: linear-gradient(180deg, hsl(222 22% 11%), hsl(222 22% 9%));
+    box-shadow:
+      0 1px 0 0 hsl(40 20% 96% / 0.04) inset,
+      0 0 0 1px hsl(222 24% 5% / 0.5),
+      0 10px 30px -10px hsl(222 24% 2% / 0.6);
+  }
+  .card-elevated-hover {
+    transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  }
+  .card-elevated-hover:hover {
+    transform: translateY(-2px);
+    border-color: hsl(38 82% 55% / 0.35);
+    box-shadow:
+      0 1px 0 0 hsl(40 20% 96% / 0.05) inset,
+      0 0 0 1px hsl(222 24% 5% / 0.5),
+      0 20px 40px -10px hsl(38 82% 55% / 0.15),
+      0 10px 30px -10px hsl(222 24% 2% / 0.7);
+  }
+
+  /* Titres/chiffres héros avec gradient or */
+  .gradient-text {
+    background: linear-gradient(135deg, hsl(38 82% 65%) 0%, hsl(38 82% 52%) 50%, hsl(32 72% 48%) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Bouton primary avec gradient + glow */
+  .btn-primary-glow {
+    background: linear-gradient(135deg, hsl(38 85% 60%) 0%, hsl(38 82% 52%) 100%);
+    color: hsl(222 24% 5%);
+    box-shadow:
+      0 1px 0 0 hsl(40 100% 80% / 0.25) inset,
+      0 8px 24px -8px hsl(38 82% 55% / 0.5);
+    transition: box-shadow 200ms ease, transform 200ms ease;
+  }
+  .btn-primary-glow:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      0 1px 0 0 hsl(40 100% 80% / 0.3) inset,
+      0 12px 32px -8px hsl(38 82% 55% / 0.7);
+  }
+
+  /* Glass effect pour overlays (toolbar, badges) */
+  .glass {
+    background: hsl(222 22% 9% / 0.72);
+    backdrop-filter: blur(10px) saturate(140%);
+    -webkit-backdrop-filter: blur(10px) saturate(140%);
+    border: 1px solid hsl(40 20% 96% / 0.06);
+  }
+
+  /* Animation d'apparition staggered */
+  .fade-in-up {
+    animation: fade-in-up 500ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Scrollbar raffiné */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: hsl(220 18% 10%);
+  background: hsl(222 22% 7%);
 }
 ::-webkit-scrollbar-thumb {
-  background: hsl(220 15% 25%);
-  border-radius: 3px;
+  background: hsl(222 18% 22%);
+  border-radius: 4px;
+  border: 2px solid hsl(222 22% 7%);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(38 78% 52%);
+  background: hsl(38 82% 55%);
+}
+
+/* Sélection texte en accent */
+::selection {
+  background: hsl(38 82% 55% / 0.35);
+  color: hsl(40 20% 96%);
 }

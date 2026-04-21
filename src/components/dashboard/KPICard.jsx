@@ -4,21 +4,22 @@ import { motion } from "framer-motion";
 export default function KPICard({ icon: Icon, label, value, subtitle, index = 0 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.1, duration: 0.4 }}
-      className="relative overflow-hidden rounded-xl bg-card border border-border p-6 group hover:border-primary/30 transition-all duration-300"
+      transition={{ delay: index * 0.08, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      className="card-elevated card-elevated-hover relative overflow-hidden p-6 group"
     >
-      <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -translate-y-8 translate-x-8 group-hover:bg-primary/10 transition-colors" />
+      {/* Halo orange en coin haut-droit */}
+      <div className="pointer-events-none absolute -top-12 -right-12 w-40 h-40 rounded-full bg-[radial-gradient(closest-side,hsl(38_82%_55%/0.18),transparent)] group-hover:bg-[radial-gradient(closest-side,hsl(38_82%_55%/0.28),transparent)] transition-all duration-500" />
       <div className="relative">
-        <div className="flex items-center justify-between mb-4">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+        <div className="flex items-center justify-between mb-5">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary/25 to-primary/5 border border-primary/20 flex items-center justify-center shadow-[inset_0_1px_0_0_hsl(40_100%_80%/0.15)]">
             <Icon className="w-5 h-5 text-primary" />
           </div>
         </div>
-        <p className="text-2xl font-bold text-foreground">{value}</p>
-        <p className="text-sm text-muted-foreground mt-1">{label}</p>
-        {subtitle && <p className="text-xs text-primary mt-1">{subtitle}</p>}
+        <p className="text-3xl font-display font-bold gradient-text leading-none tracking-tight">{value}</p>
+        <p className="text-sm text-muted-foreground mt-2">{label}</p>
+        {subtitle && <p className="text-xs text-primary/80 mt-1 font-medium">{subtitle}</p>}
       </div>
     </motion.div>
   );
