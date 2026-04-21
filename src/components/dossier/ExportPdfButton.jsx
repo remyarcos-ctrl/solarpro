@@ -126,31 +126,28 @@ export default function ExportPdfButton({ client, panel, profitability, settings
         doc.text(v, W - M - 3, y + 5.5, { align: "right" });
         y += 9;
       });
-      // Tableau récapitulatif des pans (si disponibles)
-      if (pans && pans.length > 0) {
+      // Tableau récapitulatif des pans — utilise profitability.panDetails (source unique)
+      if (profitability.panDetails && profitability.panDetails.length > 0) {
         y += 5;
         doc.setTextColor(...GOLD); doc.setFontSize(9); doc.setFont("helvetica", "bold");
         doc.text("Récapitulatif des pans de toiture", M, y); y += 4;
-        const panHeaders = ["Pan", "Orientation", "Incl.", "Ombrage", "Pan. max", "Prod./an"];
+        const panHeaders = ["Pan", "Orientation", "Incl.", "kWc", "PR", "Ombrage", "Prod./an"];
         const colW = CW / panHeaders.length;
         doc.setFillColor(...DARK3); doc.rect(M, y, CW, 7, "F");
         doc.setTextColor(...GRAY); doc.setFontSize(6); doc.setFont("helvetica", "bold");
         panHeaders.forEach((h, i) => doc.text(h, M + i * colW + 2, y + 5));
         y += 7;
-        const elecPrice = settings?.electricity_price || 0.2516;
-        pans.forEach((pan, idx) => {
-          const kwc  = ((pan.maxPanels || 0) * (panel?.power_wc || 0)) / 1000;
-          const base = pan.pvgisKwhPerKwc || pvgisData?.annualKwhPerKwc || settings?.regional_production || 1100;
-          const prod = Math.round(kwc * base * 0.88);
-          const oriMap = { S:"Sud", SE:"Sud-Est", SW:"Sud-Ouest", E:"Est", W:"Ouest", N:"Nord", NE:"Nord-Est", NW:"Nord-Ouest" };
-          const ori  = oriMap[pan.orientation] || pan.orientation || "—";
+        const oriMap = { S:"Sud", SE:"Sud-Est", SW:"Sud-Ouest", E:"Est", W:"Ouest", N:"Nord", NE:"Nord-Est", NW:"Nord-Ouest" };
+        profitability.panDetails.forEach((pd, idx) => {
+          const matchingPan = (pans || [])[idx] || {};
           const rowValues = [
-            `Pan ${idx + 1}`,
-            `${ori} ${pan.azimut != null ? pan.azimut + "°" : ""}`,
-            `${pan.inclination ?? 20}°`,
-            pan.solarShadingFactor != null ? `${Math.round(pan.solarShadingFactor * 100)}% ☀️` : (pan.shading === "none" ? "Aucun" : pan.shading || "—"),
-            String(pan.maxPanels || 0),
-            `${prod.toLocaleString("fr-FR")} kWh`,
+            pd.label || `Pan ${idx + 1}`,
+            `${oriMap[pd.orientation] || pd.orientation || "—"} ${matchingPan.azimut != null ? Math.round(matchingPan.azimut) + "°" : ""}`,
+            `${pd.inclination ?? 20}°`,
+            `${pd.kwc?.toFixed(2) ?? "—"}`,
+            `${pd.PR ?? "—"}%`,
+            `${Math.round((pd.shadingCoef ?? 100))}%`,
+            `${(pd.production || 0).toLocaleString("fr-FR")} kWh`,
           ];
           const rowColor = idx % 2 === 0 ? DARK2 : DARK3;
           doc.setFillColor(...rowColor);
@@ -183,14 +180,22 @@ export default function ExportPdfButton({ client, panel, profitability, settings
       y += chartH + 8;
       doc.setTextColor(...GOLD); doc.setFontSize(9); doc.setFont("helvetica", "bold");
       doc.text("Bilan production & consommation", M, y); y += 6;
-      [
+      const autoRate = profitability.selfConsRate ?? (settings?.self_consumption_rate || 70);
+      const autoLabel = profitability.consMode === 'monthly+battery'
+        ? `Autoconsommation (${autoRate}%, calcul mensuel + batterie)`
+        : profitability.consMode === 'monthly'
+        ? `Autoconsommation (${autoRate}%, calcul mensuel réel)`
+        : `Autoconsommation (${autoRate}%, taux fixe)`;
+      const bilanLines = [
         ["Production annuelle", `${fmtN(profitability.annualProduction)} kWh`, WHITE],
-        [`Autoconsommation (${settings?.self_consumption_rate || 70}%)`, `${fmtN(profitability.selfConsumed)} kWh`, GREEN],
+        [autoLabel, `${fmtN(profitability.selfConsumed)} kWh`, GREEN],
         ["Surplus injecté réseau", `${fmtN(profitability.surplus)} kWh`, BLUE],
         ["Économies sur facture", `${fmt(profitability.annualSavings)}/an`, GREEN],
         ["Revenus revente surplus", `${fmt(profitability.annualBuybackRevenue)}/an`, BLUE],
         ["Bénéfice annuel total", `${fmt(profitability.totalAnnualBenefit)}/an`, GOLD],
-      ].forEach(([l, v, c]) => {
+        ["CO₂ évité sur 25 ans", `${fmtN(profitability.co2SavedKg || 0)} kg`, GREEN],
+      ];
+      bilanLines.forEach(([l, v, c]) => {
         doc.setFillColor(...DARK3); doc.rect(M, y, CW, 8, "F");
         doc.setTextColor(...GRAY); doc.setFontSize(7); doc.setFont("helvetica", "normal");
         doc.text(l, M + 3, y + 5.5);
@@ -213,12 +218,27 @@ export default function ExportPdfButton({ client, panel, profitability, settings
       y = 22;
       doc.setTextColor(...GOLD); doc.setFontSize(9); doc.setFont("helvetica", "bold");
       doc.text("Investissement & Financement", M, y); y += 6;
-      [
-        ["Coût total installation", fmt(profitability.totalCost), WHITE],
+      const costLines = [
+        ["Panneaux", fmt(profitability.panelCost), WHITE],
+        ["Installation & pose", fmt(profitability.installationCost), WHITE],
+      ];
+      if (profitability.batteryCost > 0) {
+        costLines.push(["Batterie de stockage", fmt(profitability.batteryCost), WHITE]);
+      }
+      costLines.push(
+        ["Coût total brut", fmt(profitability.totalCost), WHITE],
         ["Prime à l'autoconsommation", `- ${fmt(profitability.primeAutoConsommation)}`, GREEN],
         ["Reste à charge", fmt(profitability.resteACharge), GOLD],
         ["Retour sur investissement", `${profitability.roiYears} ans`, GREEN],
-      ].forEach(([l, v, c]) => {
+      );
+      if (profitability.inverterReplacementCost > 0) {
+        costLines.push([
+          `Remplacement onduleur (année ${profitability.inverterReplacementYear})`,
+          `- ${fmt(profitability.inverterReplacementCost)}`,
+          GRAY,
+        ]);
+      }
+      costLines.forEach(([l, v, c]) => {
         doc.setFillColor(...DARK3); doc.rect(M, y, CW, 8, "F");
         doc.setTextColor(...GRAY); doc.setFontSize(7); doc.setFont("helvetica", "normal");
         doc.text(l, M + 3, y + 5.5);
@@ -266,14 +286,37 @@ export default function ExportPdfButton({ client, panel, profitability, settings
       y += 14;
       doc.setTextColor(...GOLD); doc.setFontSize(8); doc.setFont("helvetica", "bold");
       doc.text("Hypothèses de calcul", M, y); y += 5;
+      const tariffLabel = profitability.tariff === 'hphc'
+        ? `HP/HC — autoconso valorisée à ${(profitability.autoElecPrice || settings?.electricity_price_hp || 0.255).toFixed(4).replace('.', ',')} €/kWh (prix HP)`
+        : `Tarif Bleu Base — ${(profitability.autoElecPrice || settings?.electricity_price || 0.2516).toFixed(4).replace('.', ',')} €/kWh`;
+      const profileLabels = {
+        standard: 'résidence principale',
+        electric_heating: 'chauffage électrique',
+        heat_pump: 'pompe à chaleur',
+        secondary: 'résidence secondaire',
+        teletravail: 'télétravail',
+        business: 'commerce / tertiaire',
+      };
       const hyps = [
-        `Prix électricité : ${settings?.electricity_price || 0.25} €/kWh`,
-        `Tarif rachat : ${settings?.buyback_rate || 0.13} €/kWh`,
-        `Autoconsommation : ${settings?.self_consumption_rate || 70}%`,
-        `Production : ${pvgisData?.annualKwhPerKwc || settings?.regional_production || 1100} kWh/kWc/an${pvgisData ? " (PVGIS réel)" : ""}`,
-        `Inflation électricité : ${settings?.inflation_rate || 4}%/an`,
-        `Dégradation panneaux : ${settings?.degradation_rate || 0.5}%/an`,
+        `Production : ${pvgisData?.annualKwhPerKwc || settings?.regional_production || 1100} kWh/kWc/an${pvgisData ? ' (PVGIS réel)' : ''}`,
+        `Performance Ratio moyen (PR) : ${profitability.avgPR || '—'}% (E_y/H(i)_y × ombrage)`,
+        tariffLabel,
+        `Tarif rachat surplus : ${(settings?.buyback_rate || 0.1302).toFixed(4).replace('.', ',')} €/kWh (fixé 20 ans)`,
       ];
+      if (profitability.consMode === 'monthly' || profitability.consMode === 'monthly+battery') {
+        hyps.push(`Conso foyer : ${fmtN(profitability.annualConsKwh)} kWh/an — profil « ${profileLabels[profitability.profileKey] || profitability.profileKey} »`);
+        hyps.push(`Autoconsommation : ${profitability.selfConsRate}% (calcul mensuel réel)`);
+      } else {
+        hyps.push(`Autoconsommation : ${profitability.selfConsRate || settings?.self_consumption_rate || 70}% (taux fixe)`);
+      }
+      if (profitability.batteryKwh > 0) {
+        hyps.push(`Batterie : ${profitability.batteryKwh} kWh (~${Math.round(profitability.batteryKwh * 30 * 0.9)} kWh stockés/mois)`);
+      }
+      hyps.push(
+        `Inflation électricité : ${settings?.inflation_rate ?? 5}%/an`,
+        `Dégradation panneaux : ${settings?.degradation_rate ?? 0.4}%/an`,
+        `Facteur CO₂ mix électrique : ${Math.round((settings?.co2_kg_per_kwh ?? 0.052) * 1000)} g/kWh${settings?.co2_kg_per_kwh ? ' (RTE eCO2mix)' : ' (ADEME 2024)'}`,
+      );
       doc.setFillColor(...DARK2); doc.rect(M, y, CW, hyps.length * 6 + 4, "F");
       doc.setTextColor(...GRAY); doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
       hyps.forEach((h, i) => doc.text(`• ${h}`, M + 3, y + 5 + i * 6));
