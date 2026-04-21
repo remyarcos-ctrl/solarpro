@@ -34,6 +34,9 @@ export default function DossierDetail() {
   const [consoEstimate, setConsoEstimate] = useState(null);
   const [consoLoading,  setConsoLoading]  = useState(false);
   const [co2Factor,     setCo2Factor]     = useState(null);
+  // Persistance : les 3 états lifted ici pour survivre aux reload
+  const [excludedPanelIds, setExcludedPanelIds] = useState([]);
+  const [rotationDelta,    setRotationDelta]    = useState(0);
 
   const { isLoading } = useQuery({
     queryKey: ["client", clientId],
@@ -52,9 +55,18 @@ export default function DossierDetail() {
     setCoords(null);
     setPans([]);
     setConsoEstimate(null);
+    setExcludedPanelIds([]);
+    setRotationDelta(0);
     window.__smCoords = null;
     window.__smPans   = null;
   }, [clientId]);
+
+  // Hydratation des données sauvegardées quand le dossier charge
+  useEffect(() => {
+    if (!data) return;
+    if (Array.isArray(data.excluded_panel_ids)) setExcludedPanelIds(data.excluded_panel_ids);
+    if (typeof data.rotation_delta === 'number') setRotationDelta(data.rotation_delta);
+  }, [data?.id]);
 
   // Facteur CO2 réel France (RTE eCO2mix, moyenne 12 mois) — cache 7j
   useEffect(() => {
@@ -141,11 +153,26 @@ export default function DossierDetail() {
   });
 
   const handleSave = () => {
+    // Sérialise les pans (sans drawId volatile, le reste est JSON-safe)
+    const savedPans = (window.__smPans || []).map(p => ({
+      id: p.id, coords: p.coords, area: p.area, index: p.index,
+      orientation: p.orientation, azimut: p.azimut, inclination: p.inclination,
+      maxPanels: p.maxPanels, maxPanelsTraced: p.maxPanelsTraced, maxPanelsSolar: p.maxPanelsSolar,
+      solarAreaM2: p.solarAreaM2,
+      solarSegmentIdx: p.solarSegmentIdx,
+      solarShadingFactor: p.solarShadingFactor, shadingSource: p.shadingSource, shading: p.shading,
+      inclinationSource: p.inclinationSource,
+      pvgisKwhPerKwc: p.pvgisKwhPerKwc, pvgisPR: p.pvgisPR,
+      lidarSource: p.lidarSource,
+    }));
     updateMutation.mutate({
       ...data,
+      saved_pans:          savedPans,
+      excluded_panel_ids:  excludedPanelIds,
+      rotation_delta:      rotationDelta,
       installation_cost: profitability?.resteACharge || data.installation_cost || 0,
-      annual_savings: profitability?.totalAnnualBenefit || data.annual_savings || 0,
-      roi_years: profitability?.roiYears || data.roi_years || 0,
+      annual_savings:    profitability?.totalAnnualBenefit || data.annual_savings || 0,
+      roi_years:         profitability?.roiYears || data.roi_years || 0,
     });
   };
 
@@ -286,6 +313,11 @@ export default function DossierDetail() {
               onMaxPanelsChange={max => setData(d => ({ ...d, max_panels: max, panel_count: (d.panel_count > 0) ? Math.min(d.panel_count, max) : max }))}
               onCaptureReady={img => setData(d => ({ ...d, roof_capture: img }))}
               onRoofDimensionsChange={(w, h) => setData(d => ({ ...d, roof_width: w, roof_height: h }))}
+              initialPans={data.saved_pans}
+              initialExcludedPanelIds={excludedPanelIds}
+              onExcludedPanelsChange={setExcludedPanelIds}
+              initialRotationDelta={rotationDelta}
+              onRotationDeltaChange={setRotationDelta}
             />
           </div>
 

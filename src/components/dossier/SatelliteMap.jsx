@@ -318,6 +318,7 @@ function MapController({
   onFluxReady, onFluxError, showFlux, fluxLoading, setFluxLoading,
   setExcludedCount, onPlaceFromGrid,
   rotationDelta = 0,
+  initialPans, initialExcludedPanelIds, onExcludedPanelsChange,
 }) {
   const { current: map } = useMap();
   const drawRef = useRef(null);
@@ -327,7 +328,11 @@ function MapController({
   const snapMarkerRef = useRef(null);
   const fluxLoadedRef = useRef(false);
   const fluxBlobUrlRef = useRef(null);
-  const excludedPanelsRef = useRef(new Set()); // ids "s{segIdx}-p{panelIdx}"
+  const excludedPanelsRef = useRef(new Set(initialExcludedPanelIds || [])); // ids "s{segIdx}-p{panelIdx}"
+  // Garde sync avec la prop parent (hydratation async)
+  useEffect(() => {
+    excludedPanelsRef.current = new Set(initialExcludedPanelIds || []);
+  }, [initialExcludedPanelIds]);
   const generatingRef = useRef(false);
   const [gridVersion, setGridVersion] = useState(0);
   const initializedRef = useRef(false);
@@ -641,10 +646,34 @@ function MapController({
       }
       // Contour orange = rectangles orientés des segments Solar API (fallback BDTOPO)
       const mbMapRef = map?.getMap();
-      const guideFeats = buildRoofGuideFeatures(solarDataRef.current);
+      const guideFeats = buildRoofGuideFeatures(solarDataRef.current, rotationDelta);
       if (guideFeats.length > 0) {
         mbMapRef?.getSource("bdtopo-guide")?.setData({ type: "FeatureCollection", features: guideFeats });
+        // Ré-applique les exclusions persistées (features-state)
+        for (const id of excludedPanelsRef.current) {
+          mbMapRef?.setFeatureState({ source: "bdtopo-guide", id }, { excluded: true });
+        }
       }
+
+      // Hydratation des pans sauvegardés (si dossier chargé avec saved_pans)
+      if (Array.isArray(initialPans) && initialPans.length > 0 && pansRef.current.length === 0) {
+        const hydrated = initialPans.map((p, i) => {
+          if (!p.coords?.[0]?.length) return null;
+          // Re-crée la feature MapboxDraw (drawId neuf à chaque session)
+          let drawId = null;
+          try {
+            const ids = drawRef.current?.add({
+              type: 'Feature',
+              geometry: { type: 'Polygon', coordinates: p.coords },
+              properties: {},
+            });
+            drawId = ids?.[0];
+          } catch {}
+          return { ...p, drawId, index: p.index ?? i };
+        }).filter(Boolean);
+        if (hydrated.length > 0) setPans(hydrated);
+      }
+
       onDataReady?.();
     }, 1500);
 
@@ -746,14 +775,21 @@ function MapController({
     updateDebounceRef.current = setTimeout(() => updatePanelsOnMap(), 80);
   }, [pans, panel, orientation, gridVersion, rotationDelta]);
 
-  // Rotation globale : re-feed le guide orange avec le nouveau delta
+  // Rotation globale : re-feed le guide orange + ré-applique les exclusions
   useEffect(() => {
     if (!map || !solarDataRef.current) return;
     const mbMap = map.getMap();
     const src = mbMap.getSource("bdtopo-guide");
     if (!src) return;
     const feats = buildRoofGuideFeatures(solarDataRef.current, rotationDelta);
-    if (feats.length > 0) src.setData({ type: "FeatureCollection", features: feats });
+    if (feats.length > 0) {
+      src.setData({ type: "FeatureCollection", features: feats });
+      // Ré-applique les feature-states excluded (après setData les états persistent
+      // tant que les IDs restent stables, mais on force pour les cas d'hydratation)
+      for (const id of excludedPanelsRef.current) {
+        mbMap.setFeatureState({ source: "bdtopo-guide", id }, { excluded: true });
+      }
+    }
   }, [map, rotationDelta, gridVersion]);
   useEffect(() => { if (drawRef.current) drawRef.current.options.styles = makeDrawStyles(currentPanIndex); }, [currentPanIndex]);
 
@@ -858,6 +894,7 @@ function MapController({
       else          excludedPanelsRef.current.add(id);
       mbMap.setFeatureState({ source: "bdtopo-guide", id }, { excluded: !excluded });
       setExcludedCount?.(excludedPanelsRef.current.size);
+      onExcludedPanelsChange?.([...excludedPanelsRef.current]); // persist
       setGridVersion(v => v + 1);
     };
     mbMap.on("click", "bdtopo-guide-fill", onClick);
@@ -1052,6 +1089,9 @@ function MapController({
 export default function SatelliteMap({
   address, panelCount = 0, panel = null, orientation = "portrait",
   onRoofAreaChange, onMaxPanelsChange, onCaptureReady, onRoofDimensionsChange, settings, pvgisData,
+  // Persistance : hydratation + callbacks vers le parent
+  initialPans, initialExcludedPanelIds, onExcludedPanelsChange,
+  initialRotationDelta = 0, onRotationDeltaChange,
 }) {
   const [ready,      setReady]      = useState(false);
   const [isDrawing,  setIsDrawing]  = useState(false);
@@ -1074,7 +1114,16 @@ export default function SatelliteMap({
   const [fluxError,   setFluxError]   = useState(null);
   const [excludedCount, setExcludedCount] = useState(0);
   const [placementStats, setPlacementStats] = useState({ totalPanels: 0, totalYearlyKwh: 0 });
-  const [rotationDelta, setRotationDelta] = useState(0);
+  const [rotationDelta, setRotationDeltaLocal] = useState(initialRotationDelta || 0);
+  const setRotationDelta = (v) => {
+    const next = typeof v === 'function' ? v(rotationDelta) : v;
+    setRotationDeltaLocal(next);
+    onRotationDeltaChange?.(next);
+  };
+  // Rehydrate si la prop parent change (ex: chargement async du dossier)
+  useEffect(() => {
+    setRotationDeltaLocal(initialRotationDelta || 0);
+  }, [initialRotationDelta]);
   const solarDataRef = useRef(null);
   const prevPansRef  = useRef([]);
 
@@ -1433,6 +1482,9 @@ export default function SatelliteMap({
             setExcludedCount={setExcludedCount}
             onPlaceFromGrid={setPlacementStats}
             rotationDelta={rotationDelta}
+            initialPans={initialPans}
+            initialExcludedPanelIds={initialExcludedPanelIds}
+            onExcludedPanelsChange={onExcludedPanelsChange}
           />
         </Map>
 
