@@ -1193,9 +1193,9 @@ export default function SatelliteMap({
   }
 
   return (
-    <div className="space-y-3">
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 flex-wrap">
+    <div className="space-y-4">
+      {/* Toolbar — glass pour un rendu premium */}
+      <div className="glass rounded-xl p-2 flex items-center gap-2 flex-wrap">
         {isDrawing ? (
           <Button size="sm" onClick={() => act("cancelDraw")} className="bg-amber-500 hover:bg-amber-600 text-black font-semibold">
             <Pencil className="w-4 h-4 mr-1" /> Annuler

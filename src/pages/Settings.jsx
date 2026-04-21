@@ -8,9 +8,10 @@ import { useSettings } from "@/lib/useSettings";
 
 function SettingsSection({ icon: Icon, title, children }) {
   return (
-    <div className="rounded-xl bg-card border border-border p-6">
-      <h2 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
-        <Icon className="w-5 h-5 text-primary" />
+    <div className="card-elevated p-6">
+      <h2 className="text-base font-display font-semibold text-foreground mb-6 flex items-center gap-2.5 tracking-tight">
+        <span className="w-1 h-5 rounded-full bg-primary shadow-[0_0_6px_hsl(38_82%_55%/0.6)]" />
+        <Icon className="w-4 h-4 text-primary" />
         {title}
       </h2>
       {children}
@@ -63,20 +64,24 @@ export default function Settings() {
   }
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-6 md:p-8 max-w-[1600px] mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-10 fade-in-up">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Paramètres</h1>
-          <p className="text-muted-foreground mt-1">Configurez vos paramètres commerciaux</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-primary/80 font-semibold mb-2">Configuration</p>
+          <h1 className="text-4xl md:text-5xl font-display font-bold tracking-tight">
+            <span className="text-foreground">Vos</span>{' '}
+            <span className="gradient-text">paramètres</span>
+          </h1>
+          <p className="text-muted-foreground mt-2 text-sm">Tarifs EDF, primes, coûts d'installation, CO₂…</p>
         </div>
-        <Button
+        <button
           onClick={handleSave}
           disabled={updateSettings.isPending}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 font-semibold"
+          className="btn-primary-glow inline-flex items-center gap-2 font-semibold px-5 py-2.5 rounded-lg text-sm disabled:opacity-60 self-start sm:self-auto"
         >
           {updateSettings.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           Sauvegarder
-        </Button>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

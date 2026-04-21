@@ -139,36 +139,39 @@ export default function NewDossier() {
     <div className="p-6 lg:p-8 max-w-[1900px] mx-auto">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8 fade-in-up">
         <div className="flex items-center gap-4">
-          <Link to="/"><Button variant="ghost" size="icon"><ArrowLeft className="w-5 h-5" /></Button></Link>
+          <Link to="/"><Button variant="ghost" size="icon" className="hover:bg-secondary/60"><ArrowLeft className="w-5 h-5" /></Button></Link>
           <div>
-            <h1 className="text-3xl font-bold">Nouveau dossier</h1>
-            <p className="text-muted-foreground mt-1 flex items-center gap-2">
-              Étude solaire IA
-              {pvgisLoading && <span className="text-xs text-amber-400 animate-pulse">· Chargement données solaires…</span>}
-              {pvgisData && <span className="text-xs text-emerald-400">· 🛰️ Données PVGIS réelles</span>}
-              {aidData && <span className="text-xs text-primary">· {aidData.region}</span>}
+            <p className="text-xs uppercase tracking-[0.2em] text-primary/80 font-semibold mb-1">Création</p>
+            <h1 className="text-3xl md:text-4xl font-display font-bold tracking-tight">
+              <span className="text-foreground">Nouveau</span>{' '}
+              <span className="gradient-text">dossier</span>
+            </h1>
+            <p className="text-muted-foreground mt-1.5 flex items-center gap-2 text-sm flex-wrap">
+              {pvgisLoading && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] animate-pulse">Chargement PVGIS…</span>}
+              {pvgisData && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px]">🛰️ PVGIS</span>}
+              {aidData && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px]">{aidData.region}</span>}
             </p>
           </div>
         </div>
-        <Button onClick={handleSave} disabled={createMutation.isPending}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 font-semibold">
+        <button onClick={handleSave} disabled={createMutation.isPending}
+          className="btn-primary-glow inline-flex items-center gap-2 font-semibold px-5 py-2 rounded-lg text-sm disabled:opacity-60 self-start lg:self-auto">
           <Save className="w-4 h-4" />
-          {createMutation.isPending ? "Enregistrement..." : "Enregistrer"}
-        </Button>
+          {createMutation.isPending ? "Enregistrement…" : "Enregistrer"}
+        </button>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[300px_1fr_300px] gap-6">
 
         {/* Gauche */}
         <div className="space-y-6">
-          <div className="rounded-xl bg-card border border-border p-6">
+          <div className="card-elevated p-6">
             <h2 className="text-lg font-semibold mb-4">Informations client</h2>
             <ClientForm data={data} onChange={setData} />
           </div>
 
-          <div className="rounded-xl bg-card border border-border p-6">
+          <div className="card-elevated p-6">
             <h2 className="text-lg font-semibold mb-4">Configuration panneaux</h2>
             {panelsLoading
               ? <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /></div>
@@ -176,7 +179,7 @@ export default function NewDossier() {
             }
           </div>
 
-          <div className="rounded-xl bg-card border border-border p-6">
+          <div className="card-elevated p-6">
             <h2 className="text-lg font-semibold mb-4">Orientation panneaux</h2>
             <div className="grid grid-cols-2 gap-3">
               {["portrait", "paysage"].map(o => (
@@ -205,7 +208,7 @@ export default function NewDossier() {
 
         {/* Centre */}
         <div className="space-y-6">
-          <div className="rounded-xl bg-card border border-border p-6">
+          <div className="card-elevated p-6">
             <h2 className="text-lg font-semibold mb-4">Vue satellite & Calpinage multi-pans</h2>
             <SatelliteMap
               address={data.address}

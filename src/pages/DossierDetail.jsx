@@ -246,61 +246,82 @@ export default function DossierDetail() {
       <div className="grid grid-cols-1 xl:grid-cols-[300px_1fr_300px] gap-6">
 
         {/* Gauche */}
-        <div className="space-y-6">
-          <div className="rounded-xl bg-card border border-border p-6">
-            <h2 className="text-lg font-semibold mb-4">Informations client</h2>
+        <div className="space-y-5">
+          <div className="card-elevated p-6 fade-in-up">
+            <h2 className="text-base font-display font-semibold tracking-tight mb-5 flex items-center gap-2">
+              <span className="w-1 h-5 rounded-full bg-primary shadow-[0_0_6px_hsl(38_82%_55%/0.6)]" />
+              Informations client
+            </h2>
             <ClientForm data={data} onChange={setData} />
             {communePvStats && (
-              <div className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm">
-                <div className="font-semibold text-emerald-300 mb-1">
-                  📊 {communePvStats.commune} — déjà {communePvStats.nbInstallations.toLocaleString('fr-FR')} installations photovoltaïques
+              <div className="mt-5 rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 px-4 py-3 text-sm">
+                <div className="font-display font-semibold text-emerald-300 mb-1">
+                  📊 {communePvStats.commune} — {communePvStats.nbInstallations.toLocaleString('fr-FR')} installations PV déjà
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  Puissance totale déployée : <strong className="text-emerald-300">{communePvStats.puissanceTotaleKw.toLocaleString('fr-FR')} kWc</strong>
-                  {' '}· moyenne par foyer : <strong>{communePvStats.puissanceMoyenneKwc} kWc</strong>
-                  {' '}— <span className="italic">source ENEDIS (registre national)</span>
+                  <strong className="text-emerald-300">{communePvStats.puissanceTotaleKw.toLocaleString('fr-FR')} kWc</strong> déployés
+                  {' '}· moyenne <strong className="text-foreground">{communePvStats.puissanceMoyenneKwc} kWc</strong>/foyer
+                  {' '}<span className="text-muted-foreground/60">— ENEDIS</span>
                 </div>
               </div>
             )}
           </div>
-          <div className="rounded-xl bg-card border border-border p-6">
-            <h2 className="text-lg font-semibold mb-4">Configuration panneaux</h2>
+          <div className="card-elevated p-6 fade-in-up" style={{ animationDelay: '80ms' }}>
+            <h2 className="text-base font-display font-semibold tracking-tight mb-5 flex items-center gap-2">
+              <span className="w-1 h-5 rounded-full bg-primary shadow-[0_0_6px_hsl(38_82%_55%/0.6)]" />
+              Configuration panneaux
+            </h2>
             {panels.length > 0
               ? <PanelConfigurator panels={panels} data={data} onChange={setData} />
               : <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /></div>
             }
           </div>
-          <ConsumptionConfigurator
-            data={data}
-            onChange={(patch) => setData(d => ({ ...d, ...patch }))}
-            settings={settingsWithPVGIS}
-            onSettingsChange={(patch) => setData(d => ({ ...d, ...patch }))}
-            consoEstimate={consoEstimate}
-            consoLoading={consoLoading}
-          />
-          <div className="rounded-xl bg-card border border-border p-6">
-            <h2 className="text-lg font-semibold mb-4">Orientation panneaux</h2>
+          <div className="fade-in-up" style={{ animationDelay: '160ms' }}>
+            <ConsumptionConfigurator
+              data={data}
+              onChange={(patch) => setData(d => ({ ...d, ...patch }))}
+              settings={settingsWithPVGIS}
+              onSettingsChange={(patch) => setData(d => ({ ...d, ...patch }))}
+              consoEstimate={consoEstimate}
+              consoLoading={consoLoading}
+            />
+          </div>
+          <div className="card-elevated p-6 fade-in-up" style={{ animationDelay: '240ms' }}>
+            <h2 className="text-base font-display font-semibold tracking-tight mb-5 flex items-center gap-2">
+              <span className="w-1 h-5 rounded-full bg-primary shadow-[0_0_6px_hsl(38_82%_55%/0.6)]" />
+              Orientation panneaux
+            </h2>
             <div className="grid grid-cols-2 gap-3">
-              {["portrait", "paysage"].map(o => (
-                <button key={o} onClick={() => setData(d => ({ ...d, orientation: o }))}
-                  className={`p-4 rounded-lg border text-sm font-semibold transition-all ${(data.orientation||"portrait")===o ? "bg-primary/10 border-primary text-primary" : "bg-secondary/30 border-border text-muted-foreground hover:border-primary/50"}`}>
-                  <div className="text-2xl mb-1">{o === "portrait" ? "▯" : "▭"}</div>
-                  {o.charAt(0).toUpperCase() + o.slice(1)}
-                </button>
-              ))}
+              {["portrait", "paysage"].map(o => {
+                const active = (data.orientation || "portrait") === o;
+                return (
+                  <button key={o} onClick={() => setData(d => ({ ...d, orientation: o }))}
+                    className={`relative overflow-hidden p-5 rounded-xl border text-sm font-semibold transition-all duration-200
+                      ${active
+                        ? "bg-gradient-to-br from-primary/25 to-primary/5 border-primary/50 text-primary shadow-[0_0_20px_-5px_hsl(38_82%_55%/0.4)]"
+                        : "bg-secondary/40 border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/60"
+                      }`}>
+                    <div className="text-3xl mb-1.5 leading-none">{o === "portrait" ? "▯" : "▭"}</div>
+                    {o.charAt(0).toUpperCase() + o.slice(1)}
+                  </button>
+                );
+              })}
             </div>
           </div>
           {data.roof_area > 0 && (
-            <div className="rounded-xl bg-card border border-border p-6">
-              <h2 className="text-lg font-semibold mb-4">Surface toiture</h2>
-              <div className="space-y-2 text-sm">
+            <div className="card-elevated p-6 fade-in-up" style={{ animationDelay: '320ms' }}>
+              <h2 className="text-base font-display font-semibold tracking-tight mb-5 flex items-center gap-2">
+                <span className="w-1 h-5 rounded-full bg-primary shadow-[0_0_6px_hsl(38_82%_55%/0.6)]" />
+                Surface toiture
+              </h2>
+              <div className="space-y-0 text-sm">
                 {[
                   ["Surface brute", `${data.roof_area} m²`, "text-foreground"],
-                  ["Marges (-15%)", `- ${Math.round(data.roof_area*0.15)} m²`, "text-foreground"],
-                  ["Surface utile", `${data.roof_area_usable} m²`, "text-primary"],
-                  ["Max panneaux", `${data.max_panels} pan.`, "text-primary"],
+                  ["Marges (-15%)", `- ${Math.round(data.roof_area*0.15)} m²`, "text-muted-foreground"],
+                  ["Surface utile", `${data.roof_area_usable} m²`, "text-primary font-display"],
+                  ["Max panneaux", `${data.max_panels} pan.`, "text-primary font-display"],
                 ].map(([l,v,c]) => (
-                  <div key={l} className="flex justify-between py-1.5 border-b border-border last:border-0">
+                  <div key={l} className="flex justify-between py-2 border-b border-border/40 last:border-0">
                     <span className="text-muted-foreground">{l}</span>
                     <span className={`font-semibold ${c}`}>{v}</span>
                   </div>
@@ -309,22 +330,27 @@ export default function DossierDetail() {
             </div>
           )}
           {aidData && (
-            <div className="rounded-xl bg-emerald-500/8 border border-emerald-500/20 p-4">
-              <h3 className="text-sm font-semibold text-emerald-400 mb-3">🎁 Aides — {aidData.region}</h3>
+            <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 p-5 fade-in-up" style={{ animationDelay: '400ms' }}>
+              <h3 className="text-sm font-display font-semibold text-emerald-400 mb-3 flex items-center gap-2">
+                <span className="text-base">🎁</span> Aides — {aidData.region}
+              </h3>
               <div className="space-y-2 text-xs">
-                <div className="flex justify-between"><span className="text-muted-foreground">Prime autoconso.</span><strong className="text-emerald-400">{aidData.prime_autoconsommation_kwc} €/kWc</strong></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">TVA réduite</span><strong className="text-emerald-400">{aidData.tva_reduite}%</strong></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Éco-PTZ max</span><strong className="text-emerald-400">{aidData.eco_ptz_max?.toLocaleString("fr-FR")} €</strong></div>
-                {aidData.edfPrice && <div className="flex justify-between border-t border-emerald-500/20 pt-1.5"><span className="text-muted-foreground">Prix EDF</span><strong className="text-primary">{aidData.edfPrice} €/kWh</strong></div>}
+                <div className="flex justify-between"><span className="text-muted-foreground">Prime autoconso.</span><strong className="text-emerald-300 font-display">{aidData.prime_autoconsommation_kwc} €/kWc</strong></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">TVA réduite</span><strong className="text-emerald-300 font-display">{aidData.tva_reduite}%</strong></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Éco-PTZ max</span><strong className="text-emerald-300 font-display">{aidData.eco_ptz_max?.toLocaleString("fr-FR")} €</strong></div>
+                {aidData.edfPrice && <div className="flex justify-between border-t border-emerald-500/20 pt-2 mt-1"><span className="text-muted-foreground">Prix EDF</span><strong className="text-primary font-display">{aidData.edfPrice} €/kWh</strong></div>}
               </div>
             </div>
           )}
         </div>
 
         {/* Centre */}
-        <div className="space-y-6">
-          <div className="rounded-xl bg-card border border-border p-6">
-            <h2 className="text-lg font-semibold mb-4">Vue satellite & Calpinage multi-pans</h2>
+        <div className="space-y-5">
+          <div className="card-elevated p-6 fade-in-up" style={{ animationDelay: '100ms' }}>
+            <h2 className="text-base font-display font-semibold tracking-tight mb-5 flex items-center gap-2">
+              <span className="w-1 h-5 rounded-full bg-primary shadow-[0_0_6px_hsl(38_82%_55%/0.6)]" />
+              Vue satellite & calpinage
+            </h2>
             <SatelliteMap
               address={data.address}
               panelCount={data.panel_count || 0}
@@ -359,9 +385,13 @@ export default function DossierDetail() {
         </div>
 
         {/* Droite */}
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Étude de rentabilité</h2>
+        <div className="space-y-5">
+          <div className="fade-in-up" style={{ animationDelay: '200ms' }}>
+            <p className="text-xs uppercase tracking-[0.2em] text-primary/80 font-semibold mb-2">Simulation</p>
+            <h2 className="text-2xl font-display font-bold tracking-tight mb-5">
+              <span className="text-foreground">Étude de</span>{' '}
+              <span className="gradient-text">rentabilité</span>
+            </h2>
             <ProfitabilityStudy profitability={profitability} settings={settingsWithPVGIS} />
           </div>
         </div>
@@ -370,8 +400,12 @@ export default function DossierDetail() {
 
       {/* Comparateur de scénarios — pleine largeur */}
       {selectedPanel && (
-        <div className="mt-6">
-          <h2 className="text-xl font-semibold mb-4">Comparateur de scénarios</h2>
+        <div className="mt-8 fade-in-up" style={{ animationDelay: '500ms' }}>
+          <p className="text-xs uppercase tracking-[0.2em] text-primary/80 font-semibold mb-2">Outil avancé</p>
+          <h2 className="text-2xl font-display font-bold tracking-tight mb-5">
+            <span className="text-foreground">Comparateur de</span>{' '}
+            <span className="gradient-text">scénarios</span>
+          </h2>
           <ScenarioComparator
             pans={pans}
             panel={selectedPanel}

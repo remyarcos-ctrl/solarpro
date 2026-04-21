@@ -16,13 +16,14 @@ export default function ConsumptionConfigurator({ data, onChange, settings, onSe
   const tariff      = settings?.tariff_type ?? "base";
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+    <div className="card-elevated p-6 space-y-5">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+        <h2 className="text-base font-display font-semibold tracking-tight flex items-center gap-2">
+          <span className="w-1 h-5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgb(52_211_153/0.6)]" />
           <Home className="w-4 h-4 text-emerald-400" />
           Consommation du foyer
-        </h3>
-        <span className="text-xs text-muted-foreground">Pilote le calcul d'autoconsommation réelle</span>
+        </h2>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/80">Autoconso réelle</span>
       </div>
 
       {/* Suggestions auto depuis ADEME DPE + ENEDIS */}

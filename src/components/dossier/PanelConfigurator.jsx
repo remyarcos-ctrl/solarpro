@@ -73,15 +73,19 @@ export default function PanelConfigurator({ panels, data, onChange }) {
         </div>
       )}
 
-      {/* BUG 3 fix: capacité max depuis le polygone réel */}
+      {/* Capacité max */}
       {maxPanels > 0 && (
-        <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
-          <p className="text-sm text-foreground">
-            Capacité maximale : <span className="font-bold text-primary">{maxPanels} panneaux</span>
-            {data.roof_area_usable > 0 && (
-              <span className="text-xs text-muted-foreground ml-2">({data.roof_area_usable} m² utiles)</span>
-            )}
-          </p>
+        <div className="rounded-xl border border-primary/30 bg-gradient-to-r from-primary/15 via-primary/10 to-transparent p-4 flex items-center justify-between">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-primary/80 font-semibold">Capacité maximale</p>
+            <p className="text-2xl font-display font-bold gradient-text mt-1 leading-none">{maxPanels} panneaux</p>
+          </div>
+          {data.roof_area_usable > 0 && (
+            <div className="text-right">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Surface utile</p>
+              <p className="text-lg font-display font-semibold text-foreground mt-1">{data.roof_area_usable} m²</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -107,14 +111,14 @@ export default function PanelConfigurator({ panels, data, onChange }) {
 
       {/* Summary */}
       {panelCount > 0 && selectedPanel && (
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-secondary/50 rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-primary">{Math.round(totalPower * 100) / 100}</p>
-            <p className="text-xs text-muted-foreground mt-1">kWc installés</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/15 to-primary/5 p-4 text-center">
+            <p className="text-3xl font-display font-bold gradient-text leading-none">{Math.round(totalPower * 100) / 100}</p>
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mt-2">kWc installés</p>
           </div>
-          <div className="bg-secondary/50 rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-foreground">{panelCount}</p>
-            <p className="text-xs text-muted-foreground mt-1">panneaux</p>
+          <div className="rounded-xl border border-border bg-secondary/40 p-4 text-center">
+            <p className="text-3xl font-display font-bold text-foreground leading-none">{panelCount}</p>
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mt-2">panneaux</p>
           </div>
         </div>
       )}

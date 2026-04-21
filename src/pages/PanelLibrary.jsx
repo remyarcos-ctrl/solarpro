@@ -96,17 +96,21 @@ export default function PanelLibrary() {
   };
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-6 md:p-8 max-w-[1600px] mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-10 fade-in-up">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Bibliothèque panneaux</h1>
-          <p className="text-muted-foreground mt-1">Gérez vos modèles de panneaux solaires</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-primary/80 font-semibold mb-2">Bibliothèque</p>
+          <h1 className="text-4xl md:text-5xl font-display font-bold tracking-tight">
+            <span className="text-foreground">Vos modèles de</span>{' '}
+            <span className="gradient-text">panneaux</span>
+          </h1>
+          <p className="text-muted-foreground mt-2 text-sm">Catalogue des modèles utilisables dans les études</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={(v) => { setDialogOpen(v); if (!v) setEditingPanel(null); }}>
           <DialogTrigger asChild>
-            <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+            <button className="btn-primary-glow inline-flex items-center gap-2 font-semibold px-5 py-2.5 rounded-lg text-sm self-start sm:self-auto">
               <Plus className="w-4 h-4" /> Ajouter un panneau
-            </Button>
+            </button>
           </DialogTrigger>
           <DialogContent className="bg-card border-border">
             <DialogHeader>
@@ -133,7 +137,7 @@ export default function PanelLibrary() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
-              className="rounded-xl bg-card border border-border p-6 hover:border-primary/30 transition-all"
+              className="card-elevated card-elevated-hover p-6"
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
