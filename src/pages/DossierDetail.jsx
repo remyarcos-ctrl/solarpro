@@ -14,7 +14,6 @@ import PanelConfigurator from "@/components/dossier/PanelConfigurator";
 import ConsumptionConfigurator from "@/components/dossier/ConsumptionConfigurator";
 import ProfitabilityStudy from "@/components/dossier/ProfitabilityStudy";
 import ExportPdfButton from "@/components/dossier/ExportPdfButton";
-import SupplierMailDialog from "@/components/dossier/SupplierMailDialog";
 import SolarAI from "@/components/dossier/SolarAI";
 import { fetchPVGISData, fetchRegionalAids, fetchEDFPrice } from "@/lib/pvgisApi";
 import { estimateConsumption } from "@/lib/consumptionEstimate";
@@ -229,7 +228,6 @@ export default function DossierDetail() {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <ExportPdfButton client={data} panel={selectedPanel} profitability={profitability} settings={settingsWithPVGIS} pans={pans} pvgisData={pvgisData} />
-          <SupplierMailDialog client={data} panel={selectedPanel} profitability={profitability} settings={settings} pans={pans} />
           <Button variant="outline" size="sm" onClick={() => deleteMutation.mutate()}
             className="text-destructive border-destructive/30 hover:bg-destructive/10">
             <Trash2 className="w-4 h-4 mr-1" /> Supprimer

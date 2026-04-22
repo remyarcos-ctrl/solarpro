@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Save, Settings as SettingsIcon, Building, Zap, TrendingUp, Loader2, Truck, Plus, Trash2 } from "lucide-react";
+import { Save, Settings as SettingsIcon, Building, Zap, TrendingUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useSettings } from "@/lib/useSettings";
 
@@ -42,7 +42,6 @@ function SettingsField({ label, value, onChange, type = "text", suffix, step }) 
 export default function Settings() {
   const { settings, isLoading, updateSettings } = useSettings();
   const [form, setForm] = useState(settings);
-  const [newSupplier, setNewSupplier] = useState({ name: "", email: "" });
 
   useEffect(() => {
     if (settings) setForm(settings);
@@ -129,74 +128,6 @@ export default function Settings() {
               <SettingsField label="Téléphone" value={form.company_phone} onChange={v => update("company_phone", v)} />
               <SettingsField label="Email" value={form.company_email} onChange={v => update("company_email", v)} />
               <SettingsField label="URL Logo" value={form.company_logo_url} onChange={v => update("company_logo_url", v)} />
-            </div>
-          </SettingsSection>
-        </div>
-
-        {/* Fournisseurs */}
-        <div className="lg:col-span-2">
-          <SettingsSection icon={Truck} title="Fournisseurs">
-            <p className="text-xs text-muted-foreground mb-4">
-              Ces emails seront disponibles dans le bouton <strong className="text-foreground">Mail fournisseur</strong> de chaque dossier pour envoyer une demande de devis.
-            </p>
-
-            {/* Liste existante */}
-            {(form.suppliers ?? []).length > 0 && (
-              <div className="space-y-2 mb-4">
-                {(form.suppliers ?? []).map((s, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-secondary/30">
-                    <div className="flex-1 min-w-0 grid grid-cols-2 gap-3">
-                      <div>
-                        <p className="text-[10px] uppercase text-muted-foreground tracking-wider mb-1">Nom</p>
-                        <p className="text-sm font-medium text-foreground truncate">{s.name}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase text-muted-foreground tracking-wider mb-1">Email</p>
-                        <p className="text-sm text-foreground truncate">{s.email}</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => update("suppliers", (form.suppliers ?? []).filter((_, j) => j !== i))}
-                      className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors flex-shrink-0"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Ajouter un fournisseur */}
-            <div className="flex items-end gap-3 p-4 rounded-lg border border-dashed border-border bg-secondary/20">
-              <div className="flex-1 space-y-2">
-                <Label className="text-xs uppercase text-muted-foreground tracking-wider">Nom fournisseur</Label>
-                <Input
-                  value={newSupplier.name}
-                  onChange={e => setNewSupplier(p => ({ ...p, name: e.target.value }))}
-                  placeholder="Ex : Panasonic France"
-                  className="bg-secondary/50 border-border focus:border-primary"
-                />
-              </div>
-              <div className="flex-1 space-y-2">
-                <Label className="text-xs uppercase text-muted-foreground tracking-wider">Email</Label>
-                <Input
-                  type="email"
-                  value={newSupplier.email}
-                  onChange={e => setNewSupplier(p => ({ ...p, email: e.target.value }))}
-                  placeholder="contact@fournisseur.fr"
-                  className="bg-secondary/50 border-border focus:border-primary"
-                />
-              </div>
-              <button
-                disabled={!newSupplier.name.trim() || !newSupplier.email.trim()}
-                onClick={() => {
-                  update("suppliers", [...(form.suppliers ?? []), { name: newSupplier.name.trim(), email: newSupplier.email.trim() }]);
-                  setNewSupplier({ name: "", email: "" });
-                }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary/20 border border-primary/40 text-primary text-sm font-medium hover:bg-primary/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Plus className="w-4 h-4" /> Ajouter
-              </button>
             </div>
           </SettingsSection>
         </div>
