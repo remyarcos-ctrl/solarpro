@@ -4,7 +4,8 @@ import Map, { useMap } from "react-map-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
-import { MapPin, Pencil, Trash2, RotateCcw, Layers, Plus, Flame } from "lucide-react";
+import { MapPin, Pencil, Trash2, RotateCcw, Layers, Plus, Flame, Box } from "lucide-react";
+import Building3DViewer from "./Building3DViewer";
 import { Button } from "@/components/ui/button";
 import * as turf from "@turf/turf";
 import {
@@ -316,7 +317,7 @@ function MapController({
   onRoofAreaChange, onMaxPanelsChange, onCaptureReady,
   onRoofDimensionsChange, solarDataRef, onDataReady, onSolarReady,
   onFluxReady, onFluxError, showFlux, fluxLoading, setFluxLoading,
-  setExcludedCount, onPlaceFromGrid,
+  setExcludedCount, onPlaceFromGrid, onPanelFeaturesUpdate,
   initialPans, initialExcludedPanelIds, onExcludedPanelsChange,
 }) {
   const { current: map } = useMap();
@@ -767,6 +768,7 @@ function MapController({
       onRoofDimensionsChange(Math.round(dims.width * 10) / 10, Math.round(dims.height * 10) / 10);
     }
     src.setData({ type: "FeatureCollection", features: allFeatures });
+    onPanelFeaturesUpdate?.(allFeatures);
     window.__smPans = currentPans;
   }, [map, panel, orientation, onRoofDimensionsChange, onMaxPanelsChange, onRoofAreaChange]);
 
@@ -1122,6 +1124,8 @@ export default function SatelliteMap({
   const [fluxError,   setFluxError]   = useState(null);
   const [excludedCount, setExcludedCount] = useState(0);
   const [placementStats, setPlacementStats] = useState({ totalPanels: 0, totalYearlyKwh: 0 });
+  const [show3D,        setShow3D]        = useState(false);
+  const [panelFeatures, setPanelFeatures] = useState([]);
   const solarDataRef = useRef(null);
   const prevPansRef  = useRef([]);
 
@@ -1242,6 +1246,15 @@ export default function SatelliteMap({
             >
               <Flame className="w-4 h-4 mr-1" />
               {fluxLoading && !fluxReady ? "Chargement flux…" : (showFlux ? "Flux solaire ●" : "Flux solaire")}
+            </Button>
+            <Button size="sm" variant="outline"
+              onClick={() => setShow3D(v => !v)}
+              className={show3D
+                ? "border-violet-500/50 text-violet-300 bg-violet-500/10 hover:bg-violet-500/20"
+                : "border-violet-500/30 text-violet-300/80 hover:bg-violet-500/10"}
+              title="Visualiser le bâtiment en 3D avec les panneaux"
+            >
+              <Box className="w-4 h-4 mr-1" />Vue 3D
             </Button>
             {excludedCount > 0 && (
               <span className="text-xs px-2.5 py-1 rounded-full bg-gray-500/10 border border-gray-500/30 text-gray-300">
@@ -1458,6 +1471,7 @@ export default function SatelliteMap({
             showFlux={showFlux} fluxLoading={fluxLoading} setFluxLoading={setFluxLoading}
             setExcludedCount={setExcludedCount}
             onPlaceFromGrid={setPlacementStats}
+            onPanelFeaturesUpdate={setPanelFeatures}
             initialPans={initialPans}
             initialExcludedPanelIds={initialExcludedPanelIds}
             onExcludedPanelsChange={onExcludedPanelsChange}
@@ -1525,6 +1539,27 @@ export default function SatelliteMap({
           );
         })()}
       </div>
+
+      {show3D && bdtopoBuilding && (
+        <div className="rounded-xl border border-violet-500/30 overflow-hidden">
+          <div className="px-3 py-2 bg-violet-500/10 border-b border-violet-500/20 flex items-center justify-between">
+            <span className="text-xs font-semibold text-violet-300 flex items-center gap-1.5">
+              <Box className="w-3.5 h-3.5" /> Vue 3D — {bdtopoBuilding.usage ?? "Bâtiment"} · {bdtopoBuilding.hauteur ?? "?"}m
+              {bdtopoBuilding.footprint3d ? (
+                <span className="text-[10px] text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-1.5 py-0.5 rounded-full ml-1">
+                  LOD2 IGN
+                </span>
+              ) : (
+                <span className="text-[10px] text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded-full ml-1">
+                  LOD1
+                </span>
+              )}
+            </span>
+            <span className="text-[10px] text-muted-foreground">Clic gauche : orbite · Molette : zoom · Clic droit : déplacer</span>
+          </div>
+          <Building3DViewer building={bdtopoBuilding} panelFeatures={panelFeatures} />
+        </div>
+      )}
 
       <PanSummaryTable pans={pans} onUpdatePan={handleUpdatePan} onDeletePan={handleDeletePan} panel={panel} settings={settings} pvgisData={pvgisData} solarSegments={solarSegments} />
     </div>

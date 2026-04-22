@@ -56,14 +56,18 @@ export async function fetchBuildingFromBDTOPO(lat, lon) {
   }
 
   const p = closest.feat.properties ?? {};
-  const pitch = calcRoofPitch(closest.feat.geometry);
+  const pitch     = calcRoofPitch(closest.feat.geometry);
+  const footprint3d = extractPolygon3D(closest.feat.geometry);
   const result = {
-    footprint:  closest.coords,
-    surface:    Math.round(turf.area(closest.poly)),
-    hauteur:    typeof p.hauteur === "number" ? p.hauteur : null,
-    usage:      p.usage_1 ?? null,
-    etages:     typeof p.nombre_d_etages === "number" ? p.nombre_d_etages : null,
-    distanceM:  Math.round(minDist),
+    footprint:   closest.coords,
+    footprint3d,
+    altSol:  typeof p.altitude_minimale_sol  === "number" ? p.altitude_minimale_sol  : null,
+    altToit: typeof p.altitude_maximale_toit === "number" ? p.altitude_maximale_toit : null,
+    surface:     Math.round(turf.area(closest.poly)),
+    hauteur:     typeof p.hauteur           === "number" ? p.hauteur           : null,
+    usage:       p.usage_1 ?? null,
+    etages:      typeof p.nombre_d_etages   === "number" ? p.nombre_d_etages   : null,
+    distanceM:   Math.round(minDist),
     pitch,
   };
   return result;
@@ -104,6 +108,24 @@ function calcRoofPitch(geometry) {
 
   if (horizDist < 0.5) return null;
   return Math.max(0, Math.min(60, Math.round(Math.atan2(deltaZ, horizDist) * 180 / Math.PI)));
+}
+
+// ── Anneau 3D (Z préservés) du plus grand polygone ────────────────────────
+function extractPolygon3D(geometry) {
+  if (!geometry) return null;
+  const polygons = geometry.type === "Polygon"
+    ? [geometry.coordinates]
+    : geometry.type === "MultiPolygon" ? geometry.coordinates : [];
+
+  let best = null, bestArea = 0;
+  for (const poly of polygons) {
+    try {
+      const ring2d = poly.map(r => r.map(([lon, lat]) => [lon, lat]));
+      const area = turf.area(turf.polygon(ring2d));
+      if (area > bestArea) { bestArea = area; best = poly[0]; }
+    } catch { continue; }
+  }
+  return best ? [best] : null; // [[lon, lat, z?], ...]
 }
 
 // ── Convertit une géométrie Polygon / MultiPolygon en anneau 2D ──────────
