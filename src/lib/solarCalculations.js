@@ -24,6 +24,7 @@ export const DEFAULT_SETTINGS = {
   company_email:            "",
   company_siret:            "",
   company_logo_url:         "",
+  suppliers:                [],  // [{ name, email }]
 };
 
 // ── Profils de consommation (répartition mensuelle + ratio jour) ──────────
