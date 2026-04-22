@@ -250,14 +250,15 @@ export function buildPanelGridRotated(
   polyCoords,
   wm,                   // largeur panneau (m)
   hm,                   // hauteur panneau (m)
-  maxN       = 9999,
-  orient     = "auto",  // "portrait" | "paysage" | "auto"
-  azimut     = 180,
-  margin     = 0.20,    // marge bord (m)
-  gapCol     = 0.02,    // espace inter-panneaux (m)
-  _inclination = 30,
-  _lat       = 46,
-  _obstacles = [],
+  maxN          = 9999,
+  orient        = "auto",  // "portrait" | "paysage" | "auto"
+  azimut        = 180,
+  margin        = 0.20,    // marge bord (m)
+  gapCol        = 0.02,    // espace inter-panneaux (m)
+  _inclination  = 30,
+  _lat          = 46,
+  _obstacles    = [],
+  rotationDelta = 0,       // décalage angulaire manuel en degrés (correction fine)
 ) {
   const pts = polyCoords[0];
   if (!pts || pts.length < 3) return { panels: [], max: 0 };
@@ -280,7 +281,8 @@ export function buildPanelGridRotated(
       const len = Math.hypot(dx, dy);
       if (len > maxLen) { maxLen = len; edgeAngleRad = Math.atan2(dy, dx); }
     }
-    const cosA = Math.cos(-edgeAngleRad), sinA = Math.sin(-edgeAngleRad);
+    const finalAngleRad = edgeAngleRad + (rotationDelta * Math.PI / 180);
+    const cosA = Math.cos(-finalAngleRad), sinA = Math.sin(-finalAngleRad);
 
     // ── 2. Conversion GPS ↔ mètres locaux (rotation alignée sur l'arête) ─
     function toLocal(lon, lat) {

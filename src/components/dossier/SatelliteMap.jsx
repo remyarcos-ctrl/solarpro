@@ -728,8 +728,9 @@ function MapController({
       } else {
         const g = buildPanelGridRotated(
           pan.coords, panelW, panelH, 9999, orientation,
-          (pan.azimut ?? 180) + (pan.rotationDelta ?? 0), 0.20, 0.02,
+          pan.azimut ?? 180, 0.20, 0.02,
           pan.inclination ?? 30, cLat || 46, pan.obstacles || [],
+          pan.rotationDelta ?? 0,
         );
         grid = g.panels;
         max  = g.max;
