@@ -317,7 +317,6 @@ function MapController({
   onRoofDimensionsChange, solarDataRef, onDataReady, onSolarReady,
   onFluxReady, onFluxError, showFlux, fluxLoading, setFluxLoading,
   setExcludedCount, onPlaceFromGrid,
-  rotationDelta = 0,
   initialPans, initialExcludedPanelIds, onExcludedPanelsChange,
 }) {
   const { current: map } = useMap();
@@ -646,7 +645,7 @@ function MapController({
       }
       // Contour orange = rectangles orientés des segments Solar API (fallback BDTOPO)
       const mbMapRef = map?.getMap();
-      const guideFeats = buildRoofGuideFeatures(solarDataRef.current, rotationDelta);
+      const guideFeats = buildRoofGuideFeatures(solarDataRef.current, buildRotBySegIdx());
       if (guideFeats.length > 0) {
         mbMapRef?.getSource("bdtopo-guide")?.setData({ type: "FeatureCollection", features: guideFeats });
         // Ré-applique les exclusions persistées (features-state)
@@ -715,7 +714,7 @@ function MapController({
         const gHm = googleSolar.panelHeightMeters || 1.65;
         const g = buildPanelsFromGoogleSolar(
           googleSolar.solarPanels, pan.solarSegmentIdx,
-          (pan.azimut ?? 180) + rotationDelta, gWm, gHm,
+          (pan.azimut ?? 180) + (pan.rotationDelta ?? 0), gWm, gHm,
         );
         // Filtre : retire les panneaux exclus (ordre identique à buildRoofGuideFeatures)
         const keptPanels = [];
@@ -729,7 +728,7 @@ function MapController({
       } else {
         const g = buildPanelGridRotated(
           pan.coords, panelW, panelH, 9999, orientation,
-          pan.azimut ?? 180, 0.20, 0.02,
+          (pan.azimut ?? 180) + (pan.rotationDelta ?? 0), 0.20, 0.02,
           pan.inclination ?? 30, cLat || 46, pan.obstacles || [],
         );
         grid = g.panels;
@@ -768,29 +767,38 @@ function MapController({
     }
     src.setData({ type: "FeatureCollection", features: allFeatures });
     window.__smPans = currentPans;
-  }, [map, panel, orientation, rotationDelta, onRoofDimensionsChange, onMaxPanelsChange, onRoofAreaChange]);
+  }, [map, panel, orientation, onRoofDimensionsChange, onMaxPanelsChange, onRoofAreaChange]);
 
   useEffect(() => {
     if (updateDebounceRef.current) clearTimeout(updateDebounceRef.current);
     updateDebounceRef.current = setTimeout(() => updatePanelsOnMap(), 80);
-  }, [pans, panel, orientation, gridVersion, rotationDelta]);
+  }, [pans, panel, orientation, gridVersion]);
 
-  // Rotation globale : re-feed le guide orange + ré-applique les exclusions
+  // Helper : construit { segIdx → rotationDelta } depuis les pans courants
+  function buildRotBySegIdx() {
+    const m = {};
+    for (const pan of pansRef.current) {
+      if (pan.solarSegmentIdx != null && pan.rotationDelta) {
+        m[pan.solarSegmentIdx] = pan.rotationDelta;
+      }
+    }
+    return m;
+  }
+
+  // Guide orange : re-feed avec rotation par segment + ré-applique les exclusions
   useEffect(() => {
     if (!map || !solarDataRef.current) return;
     const mbMap = map.getMap();
     const src = mbMap.getSource("bdtopo-guide");
     if (!src) return;
-    const feats = buildRoofGuideFeatures(solarDataRef.current, rotationDelta);
+    const feats = buildRoofGuideFeatures(solarDataRef.current, buildRotBySegIdx());
     if (feats.length > 0) {
       src.setData({ type: "FeatureCollection", features: feats });
-      // Ré-applique les feature-states excluded (après setData les états persistent
-      // tant que les IDs restent stables, mais on force pour les cas d'hydratation)
       for (const id of excludedPanelsRef.current) {
         mbMap.setFeatureState({ source: "bdtopo-guide", id }, { excluded: true });
       }
     }
-  }, [map, rotationDelta, gridVersion]);
+  }, [map, pans, gridVersion]);
   useEffect(() => { if (drawRef.current) drawRef.current.options.styles = makeDrawStyles(currentPanIndex); }, [currentPanIndex]);
 
   // Reset exclusions au changement d'adresse
@@ -925,7 +933,7 @@ function MapController({
       },
       autoTrace: async () => {
         // 1. Contour orange : rectangles Solar API (ou footprint BDTOPO en fallback)
-        const feats = buildRoofGuideFeatures(solarDataRef.current);
+        const feats = buildRoofGuideFeatures(solarDataRef.current, buildRotBySegIdx());
         if (feats.length === 0) return;
         mbMap.getSource("bdtopo-guide")?.setData({ type: "FeatureCollection", features: feats });
         // 2. Vue top-down Nord en haut
@@ -938,7 +946,7 @@ function MapController({
       },
       startDraw: async () => {
         // Contour orange : rectangles Solar API (ou BDTOPO en fallback)
-        const feats = buildRoofGuideFeatures(solarDataRef.current);
+        const feats = buildRoofGuideFeatures(solarDataRef.current, buildRotBySegIdx());
         const hasGuide = feats.length > 0;
         if (hasGuide) {
           mbMap.getSource("bdtopo-guide")?.setData({ type: "FeatureCollection", features: feats });
@@ -1091,7 +1099,6 @@ export default function SatelliteMap({
   onRoofAreaChange, onMaxPanelsChange, onCaptureReady, onRoofDimensionsChange, settings, pvgisData,
   // Persistance : hydratation + callbacks vers le parent
   initialPans, initialExcludedPanelIds, onExcludedPanelsChange,
-  initialRotationDelta = 0, onRotationDeltaChange,
 }) {
   const [ready,      setReady]      = useState(false);
   const [isDrawing,  setIsDrawing]  = useState(false);
@@ -1114,16 +1121,6 @@ export default function SatelliteMap({
   const [fluxError,   setFluxError]   = useState(null);
   const [excludedCount, setExcludedCount] = useState(0);
   const [placementStats, setPlacementStats] = useState({ totalPanels: 0, totalYearlyKwh: 0 });
-  const [rotationDelta, setRotationDeltaLocal] = useState(initialRotationDelta || 0);
-  const setRotationDelta = (v) => {
-    const next = typeof v === 'function' ? v(rotationDelta) : v;
-    setRotationDeltaLocal(next);
-    onRotationDeltaChange?.(next);
-  };
-  // Rehydrate si la prop parent change (ex: chargement async du dossier)
-  useEffect(() => {
-    setRotationDeltaLocal(initialRotationDelta || 0);
-  }, [initialRotationDelta]);
   const solarDataRef = useRef(null);
   const prevPansRef  = useRef([]);
 
@@ -1142,7 +1139,6 @@ export default function SatelliteMap({
     setFluxError(null);
     setExcludedCount(0);
     setPlacementStats({ totalPanels: 0, totalYearlyKwh: 0 });
-    setRotationDelta(0);
   }, [address]);
 
   useEffect(() => {
@@ -1256,26 +1252,6 @@ export default function SatelliteMap({
                 ⚠️ Flux : {fluxError}
               </span>
             )}
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-orange-500/5 border border-orange-500/20">
-              <span className="text-xs text-muted-foreground">↻</span>
-              <input
-                type="range" min={-45} max={45} step={1}
-                value={rotationDelta}
-                onChange={(e) => setRotationDelta(Number(e.target.value))}
-                className="w-24 accent-orange-500 cursor-pointer"
-                title="Rotation globale des panneaux (-45° à +45° vs azimut natif)"
-              />
-              <span className="text-xs text-orange-300 font-mono w-10 text-right">
-                {rotationDelta > 0 ? "+" : ""}{rotationDelta}°
-              </span>
-              {rotationDelta !== 0 && (
-                <button
-                  onClick={() => setRotationDelta(0)}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                  title="Réinitialiser"
-                >↺</button>
-              )}
-            </div>
             {placementStats.totalPanels > 0 && (
               <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono">
                 {placementStats.totalPanels} panneaux · {Math.round(placementStats.totalPanels * (panel?.power_wc || 410) / 10) / 100} kWc · {placementStats.totalYearlyKwh} kWh/an
@@ -1481,7 +1457,6 @@ export default function SatelliteMap({
             showFlux={showFlux} fluxLoading={fluxLoading} setFluxLoading={setFluxLoading}
             setExcludedCount={setExcludedCount}
             onPlaceFromGrid={setPlacementStats}
-            rotationDelta={rotationDelta}
             initialPans={initialPans}
             initialExcludedPanelIds={initialExcludedPanelIds}
             onExcludedPanelsChange={onExcludedPanelsChange}

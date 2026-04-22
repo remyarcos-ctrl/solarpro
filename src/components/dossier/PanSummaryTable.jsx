@@ -105,28 +105,52 @@ export default function PanSummaryTable({ pans, onUpdatePan, onDeletePan, panel,
 
                     {/* Orientation */}
                     <td className="px-3 py-2">
-                      <div className="flex items-center gap-1.5">
-                        <Select
-                          value={pan.orientation}
-                          onValueChange={v => onUpdatePan(pan.id, {
-                            orientation: v,
-                            azimut: ORIENTATIONS.find(o => o.value === v)?.azimut
-                          })}
-                        >
-                          <SelectTrigger className="h-7 text-xs bg-secondary/40 border-border w-28">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ORIENTATIONS.map(o => (
-                              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {pan.azimut != null && (
-                          <span className="text-[10px] text-emerald-400 bg-emerald-400/10 border border-emerald-400/30 px-1.5 py-0.5 rounded-full font-mono">
-                            {pan.azimut}°
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5">
+                          <Select
+                            value={pan.orientation}
+                            onValueChange={v => onUpdatePan(pan.id, {
+                              orientation: v,
+                              azimut: ORIENTATIONS.find(o => o.value === v)?.azimut,
+                              rotationDelta: 0,
+                            })}
+                          >
+                            <SelectTrigger className="h-7 text-xs bg-secondary/40 border-border w-28">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ORIENTATIONS.map(o => (
+                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {pan.azimut != null && (
+                            <span className="text-[10px] text-emerald-400 bg-emerald-400/10 border border-emerald-400/30 px-1.5 py-0.5 rounded-full font-mono">
+                              {((pan.azimut ?? 0) + (pan.rotationDelta ?? 0) + 360) % 360}°
+                            </span>
+                          )}
+                        </div>
+                        {/* Rotation fine par pan */}
+                        <div className="flex items-center gap-1.5 px-1">
+                          <span className="text-[10px] text-muted-foreground">↻</span>
+                          <input
+                            type="range" min={-45} max={45} step={1}
+                            value={pan.rotationDelta ?? 0}
+                            onChange={e => onUpdatePan(pan.id, { rotationDelta: Number(e.target.value) })}
+                            className="w-20 accent-orange-500 cursor-pointer"
+                            title="Rotation fine des panneaux sur ce pan (-45° à +45°)"
+                          />
+                          <span className="text-[10px] font-mono w-8 text-orange-300">
+                            {(pan.rotationDelta ?? 0) > 0 ? "+" : ""}{pan.rotationDelta ?? 0}°
                           </span>
-                        )}
+                          {(pan.rotationDelta ?? 0) !== 0 && (
+                            <button
+                              onClick={() => onUpdatePan(pan.id, { rotationDelta: 0 })}
+                              className="text-[10px] text-muted-foreground hover:text-foreground"
+                              title="Réinitialiser la rotation"
+                            >↺</button>
+                          )}
+                        </div>
                       </div>
                     </td>
 

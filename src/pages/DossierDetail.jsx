@@ -36,9 +36,8 @@ export default function DossierDetail() {
   const [consoLoading,  setConsoLoading]  = useState(false);
   const [co2Factor,     setCo2Factor]     = useState(null);
   const [communePvStats, setCommunePvStats] = useState(null);
-  // Persistance : les 3 états lifted ici pour survivre aux reload
+  // Persistance : les 2 états lifted ici pour survivre aux reload
   const [excludedPanelIds, setExcludedPanelIds] = useState([]);
-  const [rotationDelta,    setRotationDelta]    = useState(0);
 
   const { isLoading } = useQuery({
     queryKey: ["client", clientId],
@@ -58,7 +57,6 @@ export default function DossierDetail() {
     setPans([]);
     setConsoEstimate(null);
     setExcludedPanelIds([]);
-    setRotationDelta(0);
     window.__smCoords = null;
     window.__smPans   = null;
   }, [clientId]);
@@ -67,7 +65,6 @@ export default function DossierDetail() {
   useEffect(() => {
     if (!data) return;
     if (Array.isArray(data.excluded_panel_ids)) setExcludedPanelIds(data.excluded_panel_ids);
-    if (typeof data.rotation_delta === 'number') setRotationDelta(data.rotation_delta);
   }, [data?.id]);
 
   // Facteur CO2 réel France (RTE eCO2mix, moyenne 12 mois) — cache 7j
@@ -172,12 +169,12 @@ export default function DossierDetail() {
       inclinationSource: p.inclinationSource,
       pvgisKwhPerKwc: p.pvgisKwhPerKwc, pvgisPR: p.pvgisPR,
       lidarSource: p.lidarSource,
+      rotationDelta: p.rotationDelta ?? 0,
     }));
     updateMutation.mutate({
       ...data,
       saved_pans:          savedPans,
       excluded_panel_ids:  excludedPanelIds,
-      rotation_delta:      rotationDelta,
       installation_cost: profitability?.resteACharge || data.installation_cost || 0,
       annual_savings:    profitability?.totalAnnualBenefit || data.annual_savings || 0,
       roi_years:         profitability?.roiYears || data.roi_years || 0,
@@ -365,8 +362,6 @@ export default function DossierDetail() {
               initialPans={data.saved_pans}
               initialExcludedPanelIds={excludedPanelIds}
               onExcludedPanelsChange={setExcludedPanelIds}
-              initialRotationDelta={rotationDelta}
-              onRotationDeltaChange={setRotationDelta}
             />
           </div>
 
