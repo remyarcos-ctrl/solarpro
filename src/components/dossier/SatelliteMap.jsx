@@ -5,7 +5,6 @@ import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import { MapPin, Pencil, Trash2, RotateCcw, Layers, Plus, Flame, Box } from "lucide-react";
-import Building3DViewer from "./Building3DViewer";
 import { Button } from "@/components/ui/button";
 import * as turf from "@turf/turf";
 import {
@@ -317,7 +316,7 @@ function MapController({
   onRoofAreaChange, onMaxPanelsChange, onCaptureReady,
   onRoofDimensionsChange, solarDataRef, onDataReady, onSolarReady,
   onFluxReady, onFluxError, showFlux, fluxLoading, setFluxLoading,
-  setExcludedCount, onPlaceFromGrid, onPanelFeaturesUpdate,
+  setExcludedCount, onPlaceFromGrid, show3D,
   initialPans, initialExcludedPanelIds, onExcludedPanelsChange,
 }) {
   const { current: map } = useMap();
@@ -339,7 +338,19 @@ function MapController({
   const pansRef = useRef([]);
   const geocodeTimerRef = useRef(null);
   const updateDebounceRef = useRef(null);
+  const show3DRef = useRef(show3D);
   useEffect(() => { pansRef.current = pans; }, [pans]);
+  useEffect(() => { show3DRef.current = show3D; }, [show3D]);
+
+  // Bascule les calques 3D quand show3D change
+  useEffect(() => {
+    if (!map) return;
+    const mbMap = map.getMap();
+    const vis = show3D ? "visible" : "none";
+    if (mbMap.getLayer("building-3d-fill")) mbMap.setLayoutProperty("building-3d-fill", "visibility", vis);
+    if (mbMap.getLayer("panels-extrusion"))  mbMap.setLayoutProperty("panels-extrusion",  "visibility", vis);
+    if (show3D) mbMap.easeTo({ pitch: 45, bearing: 180, duration: 600 });
+  }, [show3D, map]);
 
   const createPanFromCoordsRef = useRef(null);
   createPanFromCoordsRef.current = async (polyCoords, drawId, forcedSeg = null, forcedSegIdx = null) => {
@@ -534,6 +545,23 @@ function MapController({
       mbMap.addLayer({ id: "overlap-preview-line", type: "line", source: "overlap-preview", paint: { "line-color": "#EF4444", "line-width": 2 } });
     }
     panelsSrcReady.current = true;
+
+    // ── Calques 3D fill-extrusion ─────────────────────────────────────────────
+    if (!mbMap.getSource("building-3d")) {
+      mbMap.addSource("building-3d", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      mbMap.addLayer({
+        id: "building-3d-fill", type: "fill-extrusion", source: "building-3d",
+        layout: { visibility: "none" },
+        paint: { "fill-extrusion-color": "#243855", "fill-extrusion-height": ["get", "hauteur"], "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.88 },
+      });
+    }
+    if (!mbMap.getLayer("panels-extrusion")) {
+      mbMap.addLayer({
+        id: "panels-extrusion", type: "fill-extrusion", source: "panels-multi",
+        layout: { visibility: "none" },
+        paint: { "fill-extrusion-color": ["get", "fillColor"], "fill-extrusion-height": ["get", "panelHeight"], "fill-extrusion-base": ["get", "panelBase"], "fill-extrusion-opacity": 0.95 },
+      });
+    }
 
     let isAutoClipping = false;
     mbMap.on("draw.create", async (e) => {
@@ -747,10 +775,11 @@ function MapController({
         const mk = new mapboxgl.Marker({ element: el, anchor: "top-left" }).setLngLat([minLng, maxLat]).addTo(mbMap);
         labelMarkersRef.current.push(mk);
       }
+      const bdHeight = solarDataRef?.current?.__bdtopo?.hauteur ?? 6;
       grid.forEach((c, i) => allFeatures.push({
         type: "Feature", id: `${pan.id}-${i}`,
         geometry: { type: "Polygon", coordinates: [c] },
-        properties: { panId: pan.id, fillColor: colors.fill, lineColor: colors.line },
+        properties: { panId: pan.id, fillColor: colors.fill, lineColor: colors.line, panelBase: bdHeight, panelHeight: bdHeight + 0.15 },
       }));
     });
 
@@ -768,7 +797,6 @@ function MapController({
       onRoofDimensionsChange(Math.round(dims.width * 10) / 10, Math.round(dims.height * 10) / 10);
     }
     src.setData({ type: "FeatureCollection", features: allFeatures });
-    onPanelFeaturesUpdate?.(allFeatures);
     window.__smPans = currentPans;
   }, [map, panel, orientation, onRoofDimensionsChange, onMaxPanelsChange, onRoofAreaChange]);
 
@@ -1051,6 +1079,14 @@ function MapController({
           generatingRef.current = false;
         }
       },
+      updateBuilding3D: (building) => {
+        if (!building?.footprint?.[0]) return;
+        const coords2d = building.footprint[0].map(([lon, lat]) => [lon, lat]);
+        mbMap.getSource("building-3d")?.setData({
+          type: "FeatureCollection",
+          features: [{ type: "Feature", geometry: { type: "Polygon", coordinates: [coords2d] }, properties: { hauteur: building.hauteur ?? 6 } }],
+        });
+      },
       resetView:     (c) => { if (c) mbMap.flyTo({ center: [c.lon, c.lat], zoom: 20, pitch: 0, bearing: 0, duration: 800 }); },
       changePitch:   (p) => mbMap.easeTo({ pitch: p, duration: 500 }),
       changeBearing: (b) => mbMap.easeTo({ bearing: b, duration: 400 }),
@@ -1084,6 +1120,29 @@ function MapController({
             mbMap.addSource("panels-multi", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
             mbMap.addLayer({ id: "panels-fill", type: "fill", source: "panels-multi", paint: { "fill-color": ["get", "fillColor"], "fill-opacity": 0.92 } });
             mbMap.addLayer({ id: "panels-line", type: "line", source: "panels-multi", paint: { "line-color": ["get", "lineColor"], "line-width": 1.2 } });
+          }
+          if (!mbMap.getSource("building-3d")) {
+            mbMap.addSource("building-3d", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+            mbMap.addLayer({
+              id: "building-3d-fill", type: "fill-extrusion", source: "building-3d",
+              layout: { visibility: show3DRef.current ? "visible" : "none" },
+              paint: { "fill-extrusion-color": "#243855", "fill-extrusion-height": ["get", "hauteur"], "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.88 },
+            });
+          }
+          if (!mbMap.getLayer("panels-extrusion")) {
+            mbMap.addLayer({
+              id: "panels-extrusion", type: "fill-extrusion", source: "panels-multi",
+              layout: { visibility: show3DRef.current ? "visible" : "none" },
+              paint: { "fill-extrusion-color": ["get", "fillColor"], "fill-extrusion-height": ["get", "panelHeight"], "fill-extrusion-base": ["get", "panelBase"], "fill-extrusion-opacity": 0.95 },
+            });
+          }
+          const bdtopo = solarDataRef.current?.__bdtopo;
+          if (bdtopo?.footprint?.[0]) {
+            const coords2d = bdtopo.footprint[0].map(([lon, lat]) => [lon, lat]);
+            mbMap.getSource("building-3d")?.setData({
+              type: "FeatureCollection",
+              features: [{ type: "Feature", geometry: { type: "Polygon", coordinates: [coords2d] }, properties: { hauteur: bdtopo.hauteur ?? 6 } }],
+            });
           }
           panelsSrcReady.current = true;
           updatePanelsOnMap?.();
@@ -1125,7 +1184,6 @@ export default function SatelliteMap({
   const [excludedCount, setExcludedCount] = useState(0);
   const [placementStats, setPlacementStats] = useState({ totalPanels: 0, totalYearlyKwh: 0 });
   const [show3D,        setShow3D]        = useState(false);
-  const [panelFeatures, setPanelFeatures] = useState([]);
   const solarDataRef = useRef(null);
   const prevPansRef  = useRef([]);
 
@@ -1153,6 +1211,7 @@ export default function SatelliteMap({
         solarDataRef.current = solarDataRef.current ?? {};
         solarDataRef.current.__bdtopo = result;
         setBdtopoBuilding(result);
+        window.__smActions?.updateBuilding3D?.(result);
       })
       .catch(err => {
         console.error("[SatelliteMap] BDTOPO erreur:", err);
@@ -1252,9 +1311,9 @@ export default function SatelliteMap({
               className={show3D
                 ? "border-violet-500/50 text-violet-300 bg-violet-500/10 hover:bg-violet-500/20"
                 : "border-violet-500/30 text-violet-300/80 hover:bg-violet-500/10"}
-              title="Visualiser le bâtiment en 3D avec les panneaux"
+              title={bdtopoBuilding ? `Bâtiment 3D — ${bdtopoBuilding.usage ?? "Bâtiment"} · ${bdtopoBuilding.hauteur ?? "?"}m · ${bdtopoBuilding.footprint3d ? "LOD2 IGN" : "LOD1"}` : "Visualiser en 3D sur la carte"}
             >
-              <Box className="w-4 h-4 mr-1" />Vue 3D
+              <Box className="w-4 h-4 mr-1" />{show3D ? "Vue 3D ●" : "Vue 3D"}
             </Button>
             {excludedCount > 0 && (
               <span className="text-xs px-2.5 py-1 rounded-full bg-gray-500/10 border border-gray-500/30 text-gray-300">
@@ -1471,7 +1530,7 @@ export default function SatelliteMap({
             showFlux={showFlux} fluxLoading={fluxLoading} setFluxLoading={setFluxLoading}
             setExcludedCount={setExcludedCount}
             onPlaceFromGrid={setPlacementStats}
-            onPanelFeaturesUpdate={setPanelFeatures}
+            show3D={show3D}
             initialPans={initialPans}
             initialExcludedPanelIds={initialExcludedPanelIds}
             onExcludedPanelsChange={onExcludedPanelsChange}
@@ -1539,27 +1598,6 @@ export default function SatelliteMap({
           );
         })()}
       </div>
-
-      {show3D && bdtopoBuilding && (
-        <div className="rounded-xl border border-violet-500/30 overflow-hidden">
-          <div className="px-3 py-2 bg-violet-500/10 border-b border-violet-500/20 flex items-center justify-between">
-            <span className="text-xs font-semibold text-violet-300 flex items-center gap-1.5">
-              <Box className="w-3.5 h-3.5" /> Vue 3D — {bdtopoBuilding.usage ?? "Bâtiment"} · {bdtopoBuilding.hauteur ?? "?"}m
-              {bdtopoBuilding.footprint3d ? (
-                <span className="text-[10px] text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-1.5 py-0.5 rounded-full ml-1">
-                  LOD2 IGN
-                </span>
-              ) : (
-                <span className="text-[10px] text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded-full ml-1">
-                  LOD1
-                </span>
-              )}
-            </span>
-            <span className="text-[10px] text-muted-foreground">Clic gauche : orbite · Molette : zoom · Clic droit : déplacer</span>
-          </div>
-          <Building3DViewer building={bdtopoBuilding} panelFeatures={panelFeatures} />
-        </div>
-      )}
 
       <PanSummaryTable pans={pans} onUpdatePan={handleUpdatePan} onDeletePan={handleDeletePan} panel={panel} settings={settings} pvgisData={pvgisData} solarSegments={solarSegments} />
     </div>
