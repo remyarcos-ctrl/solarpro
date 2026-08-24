@@ -225,6 +225,9 @@ export default function ExportPdfButton({ client, panel, profitability, settings
       if (profitability.batteryCost > 0) {
         costLines.push(["Batterie de stockage", fmt(profitability.batteryCost), WHITE]);
       }
+      if (profitability.bvAdhesion > 0) {
+        costLines.push(["Adhésion batterie virtuelle (Urban Solar)", fmt(profitability.bvAdhesion), WHITE]);
+      }
       costLines.push(["Coût total brut", fmt(profitability.totalCost), WHITE]);
       if (profitability.primeAutoConsommation > 0) {
         costLines.push(["Prime à l'autoconsommation", `- ${fmt(profitability.primeAutoConsommation)}`, GREEN]);
@@ -303,7 +306,9 @@ export default function ExportPdfButton({ client, panel, profitability, settings
         `Production : ${pvgisData?.annualKwhPerKwc || settings?.regional_production || 1100} kWh/kWc/an${pvgisData ? ' (PVGIS réel)' : ''}`,
         `Performance Ratio moyen (PR) : ${profitability.avgPR || '—'}% (E_y/H(i)_y × ombrage)`,
         tariffLabel,
-        `Tarif rachat surplus : ${(settings?.buyback_rate ?? 0.011).toFixed(4).replace('.', ',')} €/kWh (indexé +2%/an, contrat 20 ans)`,
+        profitability.surplusMode === 'bv'
+          ? `Surplus stocké en batterie virtuelle Urban Solar — déstockage ${(profitability.bvDestockage ?? 0.10).toFixed(2).replace('.', ',')} €/kWh, abonnement ${fmt(profitability.bvAboAnnual)}/an`
+          : `Tarif rachat surplus : ${(settings?.buyback_rate ?? 0.011).toFixed(4).replace('.', ',')} €/kWh (indexé +2%/an, contrat 20 ans)`,
       ];
       if (profitability.consMode === 'monthly' || profitability.consMode === 'monthly+battery') {
         hyps.push(`Conso foyer : ${fmtN(profitability.annualConsKwh)} kWh/an — profil « ${profileLabels[profitability.profileKey] || profitability.profileKey} »`);

@@ -115,6 +115,9 @@ export default function Settings() {
             <SettingsField label="Dégradation panneaux" value={form.degradation_rate} onChange={v => update("degradation_rate", v)} type="number" suffix="%/an" step="0.1" />
             <SettingsField label="Prime autoconsommation" value={form.prime_per_kwc} onChange={v => update("prime_per_kwc", v)} type="number" suffix="€/kWc" />
             <SettingsField label="Coût installation" value={form.installation_cost_per_wc} onChange={v => update("installation_cost_per_wc", v)} type="number" suffix="€/Wc" step="0.1" />
+            <SettingsField label="BV — adhésion Urban Solar" value={form.bv_adhesion} onChange={v => update("bv_adhesion", v)} type="number" suffix="€" />
+            <SettingsField label="BV — abonnement" value={form.bv_abo_kwc_mois} onChange={v => update("bv_abo_kwc_mois", v)} type="number" suffix="€/kWc/mois" step="0.1" />
+            <SettingsField label="BV — coût déstockage" value={form.bv_destockage_eur_kwh} onChange={v => update("bv_destockage_eur_kwh", v)} type="number" suffix="€/kWh" step="0.01" />
           </div>
         </SettingsSection>
 

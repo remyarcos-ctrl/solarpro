@@ -54,7 +54,12 @@ export default function ProfitabilityStudy({ profitability, settings }) {
         </h3>
         <div className="space-y-2">
           <StatRow icon={Banknote} label="Économies autoconsommation" value={`${formatCurrency(profitability.annualSavings)}/an`} />
-          <StatRow icon={TrendingUp} label="Revenus revente surplus" value={`${formatCurrency(profitability.annualBuybackRevenue)}/an`} />
+          <StatRow icon={TrendingUp}
+            label={profitability.surplusMode === 'bv' ? "Surplus stocké en BV (net déstockage)" : "Revenus revente surplus"}
+            value={`${formatCurrency(profitability.annualBuybackRevenue)}/an`} />
+          {profitability.surplusMode === 'bv' && profitability.bvAboAnnual > 0 && (
+            <StatRow icon={Calculator} label="Abonnement batterie virtuelle" value={`- ${formatCurrency(profitability.bvAboAnnual)}/an`} />
+          )}
           <StatRow icon={Award} label="Bénéfice annuel total" value={`${formatCurrency(profitability.totalAnnualBenefit)}/an`} highlight />
         </div>
       </div>
@@ -68,6 +73,9 @@ export default function ProfitabilityStudy({ profitability, settings }) {
         <div className="space-y-2">
           <StatRow icon={Calculator} label="Coût panneaux" value={formatCurrency(profitability.panelCost)} />
           <StatRow icon={Calculator} label="Coût installation" value={formatCurrency(profitability.installationCost)} />
+          {profitability.bvAdhesion > 0 && (
+            <StatRow icon={Calculator} label="Adhésion batterie virtuelle (Urban Solar)" value={formatCurrency(profitability.bvAdhesion)} />
+          )}
           <StatRow icon={Calculator} label="Coût total" value={formatCurrency(profitability.totalCost)} />
           {profitability.primeAutoConsommation > 0 && (
             <StatRow icon={Award} label="Prime autoconsommation" value={`- ${formatCurrency(profitability.primeAutoConsommation)}`} highlight />

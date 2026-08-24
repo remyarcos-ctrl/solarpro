@@ -3,7 +3,10 @@
 // - Tarif Bleu EDF base 01/08/2026 : 0,2001 €/kWh TTC
 // - Rachat surplus ≤100 kWc (arrêté 01/06/2026) : 0,011 €/kWh, indexé 2%/an
 // - Prime autoconsommation : SUPPRIMÉE pour tout raccordement depuis le 04/06/2026
-export const TARIFF_VERSION = '2026-08';
+// Modèle Happy Confort : le surplus n'est PAS revendu — il est stocké en
+// batterie virtuelle (BV) Urban Solar Energy : adhésion 249 € TTC unique,
+// abonnement ~1 €HT/kWc/mois, déstockage (acheminement+taxes) ~0,10 €/kWh.
+export const TARIFF_VERSION = '2026-08.2';
 
 export const DEFAULT_SETTINGS = {
   electricity_price:            0.2001,
@@ -14,7 +17,11 @@ export const DEFAULT_SETTINGS = {
   buyback_rate:             0.011,
   regional_production:      1100,
   self_consumption_rate:    50,     // utilisé uniquement si pas de conso client
-  inflation_rate:           2,
+  inflation_rate:           6,      // hypothèse commerciale HC (+6%/an élec)
+  surplus_mode:             'bv',   // 'bv' = batterie virtuelle Urban Solar | 'vente' = EDF OA
+  bv_adhesion:              249,    // frais d'adhésion uniques TTC
+  bv_abo_kwc_mois:          1.2,    // abonnement BV TTC €/kWc/mois (~1 €HT)
+  bv_destockage_eur_kwh:    0.10,   // coût du kWh déstocké (acheminement + taxes)
   degradation_rate:         0.4,
   prime_per_kwc:            0,     // prime supprimée (arrêté 01/06/2026) — modifiable si droits antérieurs
   prime_per_kwc_9:          0,
@@ -70,7 +77,9 @@ export const CONSUMPTION_PROFILES = {
 };
 
 export const DEFAULT_PANELS = [
-  { brand: "DualSun",        model_name: "Flash 410",      power_wc: 410, width_mm: 1722, height_mm: 1134, price: 280, efficiency: 21.3, is_default: true  },
+  // Panneau de référence Happy Confort (bi-verre bifacial, garantie 30 ans)
+  { brand: "Mylight150",     model_name: "Quartz HJT 500", power_wc: 500, width_mm: 1134, height_mm: 1960, price: 320, efficiency: 22.5, is_default: true  },
+  { brand: "DualSun",        model_name: "Flash 410",      power_wc: 410, width_mm: 1722, height_mm: 1134, price: 280, efficiency: 21.3, is_default: false },
   { brand: "Jinko",          model_name: "Tiger Neo 400",  power_wc: 400, width_mm: 1722, height_mm: 1134, price: 220, efficiency: 20.8, is_default: false },
   { brand: "SunPower",       model_name: "Maxeon 6 440",   power_wc: 440, width_mm: 1812, height_mm: 1046, price: 380, efficiency: 22.8, is_default: false },
   { brand: "Canadian Solar", model_name: "HiKu6 420",      power_wc: 420, width_mm: 1722, height_mm: 1134, price: 250, efficiency: 21.5, is_default: false },
@@ -323,15 +332,29 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
   // Solaire ≈ 100 % en heures pleines (production mi-journée = HP).
   // Donc en tarif HP/HC, l'autoconso économise au prix HP (plus avantageux).
   const autoElecPrice = tariff === 'hphc' ? elecPriceHP : elecPrice;
-  const annualSavings        = Math.round(selfConsumed * autoElecPrice);
-  const annualBuybackRevenue = Math.round(surplus * buybackRate);
-  const totalAnnualBenefit   = annualSavings + annualBuybackRevenue;
+  const annualSavings = Math.round(selfConsumed * autoElecPrice);
+
+  // ── Valorisation du surplus ───────────────────────────────────────────
+  // Mode 'bv' (défaut HC) : le surplus est stocké en batterie virtuelle
+  // Urban Solar puis redéstocké — chaque kWh récupéré évite le prix du kWh
+  // mais coûte l'acheminement au déstockage. Abonnement annuel au kWc.
+  // Mode 'vente' : revente EDF OA au tarif d'achat classique.
+  const surplusMode  = settings.surplus_mode || 'bv';
+  const bvDestockage = settings.bv_destockage_eur_kwh ?? 0.10;
+  const bvAboAnnual  = surplusMode === 'bv'
+    ? Math.round(totalKwc * (settings.bv_abo_kwc_mois ?? 1.2) * 12) : 0;
+  const bvAdhesion   = surplusMode === 'bv' ? (settings.bv_adhesion ?? 249) : 0;
+  const surplusUnitValue = surplusMode === 'bv'
+    ? Math.max(0, autoElecPrice - bvDestockage)
+    : buybackRate;
+  const annualBuybackRevenue = Math.round(surplus * surplusUnitValue);
+  const totalAnnualBenefit   = annualSavings + annualBuybackRevenue - bvAboAnnual;
 
   // ── Coûts & financement ───────────────────────────────────────────────
   const panelCost     = Math.round(panelCount * (panel.price || 0));
   const installCost   = Math.round(totalKwc * 1000 * (settings.installation_cost_per_wc || 2.5));
   const batteryCost   = Math.round(batteryKwh * (settings.battery_cost_per_kwh || 700));
-  const totalCost     = panelCost + installCost + batteryCost;
+  const totalCost     = panelCost + installCost + batteryCost + bvAdhesion;
 
   // Prime autoconsommation supprimée depuis le 04/06/2026 (arrêté du 01/06/2026).
   // Les paliers restent paramétrables dans Settings pour les dossiers dont la
@@ -343,9 +366,9 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
   const primeAutoConsommation = Math.round(primePerKwc * totalKwc);
   const resteACharge          = Math.max(0, totalCost - primeAutoConsommation);
 
-  const roiYears = totalAnnualBenefit > 0
-    ? Math.round((resteACharge / totalAnnualBenefit) * 10) / 10
-    : null;
+  // roiYears : vrai point de croisement (cumul des gains revalorisés ≥ coût),
+  // calculé après la projection — la division simple ignore l'inflation.
+  let roiYears = null;
 
   // ── Projection 25 ans ─────────────────────────────────────────────────
   const inflationRate  = (settings.inflation_rate  || 2)   / 100;
@@ -366,9 +389,17 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
     const yearAuto       = yearProd * selfConsRate;
     const yearSurplus    = yearProd * (1 - selfConsRate);
     const yearSavings    = Math.round(yearAuto * autoElecPrice * inflFactor);
-    // Contrat EDF OA : 20 ans, tarif indexé +2%/an (arrêté 01/06/2026) ; rien après
-    const buybackIndexed = buybackRate * Math.pow(1.02, year - 1);
-    const yearBuyback    = year <= 20 ? Math.round(yearSurplus * buybackIndexed) : 0;
+    let yearBuyback;
+    if (surplusMode === 'bv') {
+      // BV : le kWh évité suit l'inflation, l'acheminement au déstockage
+      // reste forfaitaire ; l'abonnement BV est fixe (contrat fournisseur).
+      const unitValue = Math.max(0, autoElecPrice * inflFactor - bvDestockage);
+      yearBuyback = Math.round(yearSurplus * unitValue) - bvAboAnnual;
+    } else {
+      // Contrat EDF OA : 20 ans, tarif indexé +2%/an (arrêté 01/06/2026) ; rien après
+      const buybackIndexed = buybackRate * Math.pow(1.02, year - 1);
+      yearBuyback = year <= 20 ? Math.round(yearSurplus * buybackIndexed) : 0;
+    }
     let   yearBenefit    = yearSavings + yearBuyback;
     if (year === inverterReplacementYear) yearBenefit -= inverterReplacementCost;
     cumulativeGains     += yearBenefit;
@@ -381,6 +412,17 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
       totalBenefit:    yearBenefit,
       cumulativeGains: Math.round(cumulativeGains),
     });
+  }
+
+  // Point de croisement interpolé entre l'année N-1 (négatif) et N (positif)
+  for (let i = 0; i < projections.length; i++) {
+    if (projections[i].cumulativeGains >= 0) {
+      const gain = projections[i].totalBenefit;
+      roiYears = gain > 0
+        ? Math.round((projections[i].year - projections[i].cumulativeGains / gain) * 10) / 10
+        : projections[i].year;
+      break;
+    }
   }
 
   // ── CO2 évité ─────────────────────────────────────────────────────────
@@ -408,6 +450,12 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
     annualBuybackRevenue,
     totalAnnualBenefit,
     autoElecPrice,
+
+    // Batterie virtuelle Urban Solar
+    surplusMode,
+    bvAboAnnual,
+    bvAdhesion,
+    bvDestockage,
 
     // Coûts
     panelCost,
