@@ -29,6 +29,9 @@ export default function PanSummaryTable({ pans, onUpdatePan, onDeletePan, panel,
   const dirtFactor     = 0.97;
   const degradY1       = 0.98;
   const systemLoss     = cableFactor * inverterFactor * dirtFactor * degradY1;
+  // Même facteur température que calculateProfitability (mode fallback)
+  const avgTemp        = pvgisData?.avgTemp ?? 12;
+  const tempFactor     = 1 + (-0.004) * ((avgTemp + 30) - 25);
 
   // Calcule production pour un pan donné
   function calcPanProd(pan) {
@@ -48,7 +51,7 @@ export default function PanSummaryTable({ pans, onUpdatePan, onDeletePan, panel,
       const PR = globalPvgisPR * coef * shading;
       return { prod: Math.round(kwc * globalProdPerKwc * coef * shading), PR, coef, shading };
     }
-    const PR = coef * shading * systemLoss;
+    const PR = coef * shading * tempFactor * systemLoss;
     return { prod: Math.round(kwc * globalProdPerKwc * PR), PR, coef, shading };
   }
 

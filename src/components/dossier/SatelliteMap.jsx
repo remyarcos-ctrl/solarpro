@@ -324,6 +324,32 @@ function MapController({
 }) {
   const { current: map } = useMap();
   const drawRef = useRef(null);
+
+  // Secours satellite : si l'IGN Géoplateforme est en panne (5xx sur les
+  // tuiles), on bascule le fond sur Esri World Imagery — jamais de carte vide.
+  useEffect(() => {
+    if (!map) return;
+    const mbMap = map.getMap();
+    let ignErrors = 0, switched = false;
+    const onErr = (e) => {
+      if (switched) return;
+      const isIgn = e?.sourceId === 'ign-sat' || /geopf\.fr/.test(e?.error?.message || e?.error?.url || '');
+      if (!isIgn) return;
+      ignErrors++;
+      if (ignErrors >= 3) {
+        switched = true;
+        try {
+          const src = mbMap.getSource('ign-sat');
+          if (src?.setTiles) {
+            src.setTiles(["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"]);
+            console.warn('[Carte] IGN Géoplateforme indisponible — bascule sur Esri World Imagery');
+          }
+        } catch { /* la carte garde le fond IGN dégradé */ }
+      }
+    };
+    mbMap.on('error', onErr);
+    return () => mbMap.off('error', onErr);
+  }, [map]);
   const panelsSrcReady = useRef(false);
   const markersRef = useRef([]);
   const labelMarkersRef = useRef([]);

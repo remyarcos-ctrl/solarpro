@@ -1,3 +1,4 @@
+import { openDataUrl } from "./openData";
 // ── Estimation de la conso électrique annuelle depuis APIs publiques ──────
 // 1. ADEME DPE : si le logement a un DPE, on a sa vraie conso finale
 // 2. ENEDIS Open Data : conso moyenne résidentielle par adresse (médiane)
@@ -13,18 +14,19 @@ function extractCommune(addr) {
   return m ? m[1].trim() : '';
 }
 
-// ── ADEME DPE (v2) ────────────────────────────────────────────────────────
-// https://data.ademe.fr — dataset dpe-v2-logements-existants
-// Renvoie la conso énergie finale en kWh/an pour le logement du DPE
+// ── ADEME DPE ─────────────────────────────────────────────────────────────
+// https://data.ademe.fr — dataset dpe03existant (remplace l'ancien
+// dpe-v2-logements-existants, supprimé — 404 depuis 2026)
+// Renvoie la conso énergie finale 5 usages en kWh/an pour le logement du DPE
 export async function fetchAdemeDPE(address) {
   if (!address) return null;
   try {
     const q = cleanAddress(address);
-    const url = `https://data.ademe.fr/data-fair/api/v1/datasets/dpe-v2-logements-existants/lines`
+    const url = `https://data.ademe.fr/data-fair/api/v1/datasets/dpe03existant/lines`
       + `?q=${encodeURIComponent(q)}&q_mode=simple&size=5`
       + `&select=adresse_ban,etiquette_dpe,surface_habitable_logement`
-      + `,consommation_energie_finale,type_energie_n_1,date_etablissement_dpe`;
-    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      + `,conso_5_usages_ef,type_energie_principale_chauffage,date_etablissement_dpe`;
+    const r = await fetch(openDataUrl(url), { signal: AbortSignal.timeout(10000) });
     if (!r.ok) return null;
     const data = await r.json();
     const hits = data?.results || data?.rows || [];
@@ -32,8 +34,8 @@ export async function fetchAdemeDPE(address) {
     // Le plus récent en priorité
     const best = hits.sort((a, b) => (b.date_etablissement_dpe || '').localeCompare(a.date_etablissement_dpe || ''))[0];
 
-    const consoFinalKwh = Math.round(Number(best.consommation_energie_finale) || 0);
-    const energieChauff = (best.type_energie_n_1 || '').toLowerCase();
+    const consoFinalKwh = Math.round(Number(best.conso_5_usages_ef) || 0);
+    const energieChauff = (best.type_energie_principale_chauffage || '').toLowerCase();
     const chauffElec = /électricité|electricite|elec/.test(energieChauff);
     // Part électrique : 100 % si chauffage élec, ~30 % sinon (base équipements + ECS)
     const consoElecEstKwh = chauffElec
@@ -47,7 +49,7 @@ export async function fetchAdemeDPE(address) {
       surface:            best.surface_habitable_logement,
       consoTotaleKwh:     consoFinalKwh,
       consoElecEstKwh,
-      chauffage:          best.type_energie_n_1,
+      chauffage:          best.type_energie_principale_chauffage,
       chauffageElec:      chauffElec,
       date:               best.date_etablissement_dpe,
     };
@@ -68,7 +70,7 @@ export async function fetchEnedisConsumption(address) {
     const filter = commune ? `&where=${encodeURIComponent(`nom_commune like "${commune}"`)}` : '';
     const url = `https://data.enedis.fr/api/explore/v2.1/catalog/datasets/consommation-annuelle-residentielle-par-adresse/records`
       + `?q=${encodeURIComponent(q)}${filter}&limit=3`;
-    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const r = await fetch(openDataUrl(url), { signal: AbortSignal.timeout(8000) });
     if (!r.ok) return null;
     const data = await r.json();
     const recs = data?.results || [];

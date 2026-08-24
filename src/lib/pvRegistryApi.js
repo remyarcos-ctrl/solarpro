@@ -1,3 +1,4 @@
+import { openDataUrl } from "./openData";
 // ── Registre national des installations PV — ENEDIS Open Data ────────────
 // Dataset public : registre-national-installation-production-stockage-electricite-agrege
 // Agrégé par commune, par filière. Sans auth, CORS ouvert.
@@ -41,7 +42,7 @@ export async function fetchCommunePvStats(address) {
     const url = `https://data.enedis.fr/api/explore/v2.1/catalog/datasets/registre-national-installation-production-stockage-electricite-agrege/records`
       + `?where=${encodeURIComponent(`code_commune = "${commune.code}" AND filiere = "Solaire"`)}`
       + `&limit=50`;
-    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    const r = await fetch(openDataUrl(url), { signal: AbortSignal.timeout(10000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     const records = data?.results || [];

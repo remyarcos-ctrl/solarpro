@@ -1,3 +1,4 @@
+import { openDataUrl } from "./openData";
 // ── Facteur CO₂ du mix électrique français (RTE eCO2mix) ─────────────────
 // API publique, sans auth, CORS ouvert.
 // https://opendata.reseaux-energies.fr — dataset eco2mix-national-tr
@@ -39,7 +40,7 @@ export async function fetchCO2Factor() {
     + `&limit=1`;
 
   try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const r = await fetch(openDataUrl(url), { signal: AbortSignal.timeout(8000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     const gPerKwh = data?.results?.[0]?.g_co2;

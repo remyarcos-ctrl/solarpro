@@ -85,10 +85,12 @@ export default function NewDossier() {
     if (!data.panel_count || !selectedPanel || !settings) return null;
     // Utiliser les données PVGIS si disponibles
     const settingsWithPVGIS = pvgisData
-      ? { ...settings, regional_production: pvgisData.annualKwhPerKwc }
+      ? { ...settings, regional_production: pvgisData.annualKwhPerKwc, pvgisSource: pvgisData.pvgisSource }
       : settings;
-    return calculateProfitability(data.panel_count, selectedPanel, settingsWithPVGIS);
-  }, [data.panel_count, selectedPanel, settings, pvgisData]);
+    // Passer les pans tracés : l'étude doit refléter le PVGIS par pan
+    // (orientation/inclinaison réelles), pas le mode simplifié Sud 30°.
+    return calculateProfitability(data.panel_count, selectedPanel, settingsWithPVGIS, pans, pvgisData);
+  }, [data.panel_count, selectedPanel, settings, pvgisData, pans]);
 
   const createMutation = useMutation({
     mutationFn: (clientData) => localClients.create(clientData),
