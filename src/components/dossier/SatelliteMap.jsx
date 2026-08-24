@@ -387,10 +387,13 @@ function MapController({
     const panelH = (panel?.height_mm > 0 ? panel.height_mm : 1722) / 1000;
     if (!panel) console.warn("[pan] panel non défini — utilisation dimensions par défaut 1134×1722mm");
 
-    // Formule unifiée : surface_m² / 1.94 × 0.80 (panneau 1.13×1.72, remplissage 80%)
+    // Formule unifiée : surface rampant / 1.94 × 0.80 (panneau 1.13×1.72, remplissage 80%)
+    // `a` est la surface PROJETÉE au sol (turf.area du tracé) → surface réelle
+    // du rampant = a / cos(inclinaison), sinon on sous-compte les panneaux.
     const PANEL_AREA_M2 = 1.94;
     const FILL_FACTOR   = 0.80;
-    const maxPanelsTraced = Math.floor((a / PANEL_AREA_M2) * FILL_FACTOR);
+    const inclCos = Math.cos((Math.max(0, Math.min(60, inclination ?? 30)) * Math.PI) / 180);
+    const maxPanelsTraced = Math.floor((a / inclCos / PANEL_AREA_M2) * FILL_FACTOR);
 
     const solarAreaM2   = bestSolarSeg?.stats?.areaMeters2
       ? Math.round(bestSolarSeg.stats.areaMeters2)

@@ -255,7 +255,7 @@ export function buildPanelGridRotated(
   azimut        = 180,
   margin        = 0.20,    // marge bord (m)
   gapCol        = 0.02,    // espace inter-panneaux (m)
-  _inclination  = 30,
+  inclination   = 30,
   _lat          = 46,
   _obstacles    = [],
   rotationDelta = 0,       // décalage angulaire manuel en degrés (correction fine)
@@ -265,6 +265,14 @@ export function buildPanelGridRotated(
 
   const safeW = wm > 0.3 ? wm : 1.134;
   const safeH = hm > 0.3 ? hm : 1.722;
+
+  // Le polygone tracé est la PROJECTION AU SOL du rampant : un panneau posé
+  // sur un toit incliné n'occupe que (dimension × cos(incl)) mètres vus du
+  // ciel dans le sens de la pente. Sans cette correction on perd des rangées
+  // entières (à 30° : ~15% du rampant). La plus longue arête (axe X local)
+  // est supposée être faîtage/gouttière → la pente est le long de l'axe Y.
+  const inclRad  = (Math.max(0, Math.min(60, inclination ?? 30)) * Math.PI) / 180;
+  const slopeCos = Math.cos(inclRad);
 
   try {
     const polygon  = turf.polygon(polyCoords);
@@ -363,19 +371,22 @@ export function buildPanelGridRotated(
     const yMin = Math.min(...ys), yMax = Math.max(...ys);
 
     // ── 5. Grille avec scan de phase ─────────────────────────────────────
+    // Axe Y = sens de la pente → toutes les longueurs Y sont projetées (× cos incl).
     function buildGridLocal(pw, ph) {
-      const stepX = pw + gapCol, stepY = ph + gapCol;
+      const phProj   = ph * slopeCos;
+      const marginY  = margin * slopeCos;
+      const stepX = pw + gapCol, stepY = phProj + gapCol * slopeCos;
       let best = [];
       // 4 × 4 offsets de phase
       for (let kx = 0; kx < 4; kx++) {
         for (let ky = 0; ky < 4; ky++) {
-          const offX = (kx / 4) * pw, offY = (ky / 4) * ph;
+          const offX = (kx / 4) * pw, offY = (ky / 4) * phProj;
           const panels = [];
-          let y = yMin + margin + offY;
-          while (y + ph <= yMax - margin) {
+          let y = yMin + marginY + offY;
+          while (y + phProj <= yMax - marginY) {
             let x = xMin + margin + offX;
             while (x + pw <= xMax - margin) {
-              if (panelInside(x, y, pw, ph)) panels.push([x, y]);
+              if (panelInside(x, y, pw, phProj)) panels.push([x, y]);
               x += stepX;
             }
             y += stepY;
@@ -393,7 +404,7 @@ export function buildPanelGridRotated(
     const paysage  = orient !== "portrait" ? buildGridLocal(pwL, phL) : [];
 
     const areaM2 = turf.area(polygon);
-    console.warn(`[Grid] ${Math.round(areaM2)}m² · portrait=${portrait.length} · paysage=${paysage.length} · théorique≈${Math.floor(areaM2 / (pwP * phP))}`);
+    console.warn(`[Grid] ${Math.round(areaM2)}m² sol (incl ${inclination}°) · portrait=${portrait.length} · paysage=${paysage.length} · théorique≈${Math.floor(areaM2 / (pwP * phP * slopeCos))}`);
 
     let panels, bestPw, bestPh, bestOrient;
     if (orient === "portrait" || portrait.length >= paysage.length) {
@@ -407,12 +418,13 @@ export function buildPanelGridRotated(
     // booleanContains renvoie false quand le panneau touche un bord (cas fréquent
     // avec le scan de phase). On utilise turf.intersect + ratio d'aire : robuste
     // aux cas limites de précision GPS.
+    const bestPhProj = bestPh * slopeCos; // hauteur dessinée = projection au sol
     const gpsGridsRaw = panels.slice(0, maxN).map(([x, y]) => [
-      toGPS(x,          y         ),
-      toGPS(x + bestPw, y         ),
-      toGPS(x + bestPw, y + bestPh),
-      toGPS(x,          y + bestPh),
-      toGPS(x,          y         ),
+      toGPS(x,          y             ),
+      toGPS(x + bestPw, y             ),
+      toGPS(x + bestPw, y + bestPhProj),
+      toGPS(x,          y + bestPhProj),
+      toGPS(x,          y             ),
     ]);
 
     const gpsGrids = gpsGridsRaw.filter(corners => {
@@ -427,7 +439,14 @@ export function buildPanelGridRotated(
       }
     });
 
-    return { panels: gpsGrids, max: gpsGrids.length, orient: bestOrient, panelW: bestPw, panelH: bestPh };
+    // Garantie finale : aucun panneau ne dépasse le polygone (filtre turf)
+    const turfPoly = turf.polygon(polyCoords);
+    const validGrids = gpsGrids.filter(corners => {
+      try { return turf.booleanWithin(turf.polygon([corners]), turfPoly); }
+      catch { return false; }
+    });
+
+    return { panels: validGrids, max: validGrids.length, orient: bestOrient, panelW: bestPw, panelH: bestPh };
   } catch (e) {
     console.error("buildPanelGridRotated:", e);
     return { panels: [], max: 0 };
