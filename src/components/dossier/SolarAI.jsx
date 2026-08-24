@@ -32,7 +32,7 @@ async function askClaude(prompt) {
 
 function buildPrompt({ pans, panel, settings, address, pvgisData, aidData }) {
   const prodRef = pvgisData?.annualKwhPerKwc || settings?.regional_production || 1100;
-  const elecPrice = aidData?.edfPrice || settings?.electricity_price || 0.25;
+  const elecPrice = aidData?.edfPrice || settings?.electricity_price || 0.2001;
   const prixWc = settings?.installation_cost_per_wc || 2.5;
 
   const panDetails = pans.map((pan, i) => {
@@ -46,7 +46,7 @@ function buildPrompt({ pans, panel, settings, address, pvgisData, aidData }) {
   const totalMax = pans.reduce((s, p) => s + (p.maxPanels || 0), 0);
   const totalKwc = (totalMax * (panel?.power_wc || 410)) / 1000;
   const cout = totalKwc * 1000 * prixWc;
-  const prime = (aidData?.prime_autoconsommation_kwc || 380) * totalKwc;
+  const prime = (aidData?.prime_autoconsommation_kwc ?? 0) * totalKwc;
 
   return `Analyse cette installation solaire et fournis des recommandations professionnelles.
 

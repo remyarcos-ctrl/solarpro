@@ -10,7 +10,9 @@ export default function PanSummaryTable({ pans, onUpdatePan, onDeletePan, panel,
   if (pans.length === 0) return null;
 
   const globalProdPerKwc = pvgisData?.annualKwhPerKwc || settings?.regional_production || 1100;
-  const elecPrice        = settings?.electricity_price || 0.2516;
+  const elecPrice        = settings?.electricity_price || 0.2001;
+  const buybackRate      = settings?.buyback_rate ?? 0.011;
+  const selfConsRate     = (settings?.self_consumption_rate ?? 50) / 100;
   // pvgisSource présent → E_y inclut déjà pertes système + température
   const pvgisMode        = !!(pvgisData?.pvgisSource || settings?.pvgisSource);
   // PR PVGIS réel (E_y / H(i)_y) — fallback 0.80. Un bon système France = 75-85 %.
@@ -50,7 +52,7 @@ export default function PanSummaryTable({ pans, onUpdatePan, onDeletePan, panel,
   const totalProd   = pans.reduce((s, p) => s + calcPanProd(p).prod, 0);
 
   const totalKwc    = (totalPanels * (panel?.power_wc || 0)) / 1000;
-  const totalSavings= Math.round(totalProd * elecPrice * 0.7); // 70% autoconsommé
+  const totalSavings= Math.round(totalProd * (elecPrice * selfConsRate + buybackRate * (1 - selfConsRate)));
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -80,7 +82,7 @@ export default function PanSummaryTable({ pans, onUpdatePan, onDeletePan, panel,
               const { prod, PR, coef, shading } = calcPanProd(pan);
               const rec     = getPanRecommendation(coef);
               const kwc     = ((pan.maxPanels || 0) * (panel?.power_wc || 0)) / 1000;
-              const savings = Math.round(prod * elecPrice * 0.7);
+              const savings = Math.round(prod * (elecPrice * selfConsRate + buybackRate * (1 - selfConsRate)));
               const prodBase = pan.pvgisKwhPerKwc || globalProdPerKwc;
               const color   = PAN_COLORS[idx % PAN_COLORS.length];
               const oriLabel= ORIENTATIONS.find(o => o.value === pan.orientation)?.label || pan.orientation;
@@ -345,16 +347,16 @@ export default function PanSummaryTable({ pans, onUpdatePan, onDeletePan, panel,
                             <div className="text-muted-foreground mb-1 font-semibold uppercase tracking-wider text-[10px]">Économies annuelles</div>
                             <div className="space-y-1">
                               <div className="flex justify-between">
-                                <span className="text-muted-foreground">Autoconsommé (70%)</span>
-                                <span className="text-emerald-400">{Math.round(prod * 0.7).toLocaleString("fr-FR")} kWh</span>
+                                <span className="text-muted-foreground">Autoconsommé ({Math.round(selfConsRate * 100)}%)</span>
+                                <span className="text-emerald-400">{Math.round(prod * selfConsRate).toLocaleString("fr-FR")} kWh</span>
                               </div>
                               <div className="flex justify-between">
                                 <span className="text-muted-foreground">Économie facture</span>
-                                <span className="text-emerald-400">{Math.round(prod * 0.7 * elecPrice).toLocaleString("fr-FR")} €</span>
+                                <span className="text-emerald-400">{Math.round(prod * selfConsRate * elecPrice).toLocaleString("fr-FR")} €</span>
                               </div>
                               <div className="flex justify-between">
                                 <span className="text-muted-foreground">Surplus revendu</span>
-                                <span className="text-blue-400">{Math.round(prod * 0.3 * 0.13).toLocaleString("fr-FR")} €</span>
+                                <span className="text-blue-400">{Math.round(prod * (1 - selfConsRate) * buybackRate).toLocaleString("fr-FR")} €</span>
                               </div>
                               <div className="flex justify-between font-semibold border-t border-border pt-1">
                                 <span className="text-muted-foreground">Total</span>

@@ -1,23 +1,30 @@
 // ── Données par défaut ────────────────────────────────────────────────────
+// Tarifs août 2026 :
+// - Tarif Bleu EDF base 01/08/2026 : 0,2001 €/kWh TTC
+// - Rachat surplus ≤100 kWc (arrêté 01/06/2026) : 0,011 €/kWh, indexé 2%/an
+// - Prime autoconsommation : SUPPRIMÉE pour tout raccordement depuis le 04/06/2026
+export const TARIFF_VERSION = '2026-08';
+
 export const DEFAULT_SETTINGS = {
-  electricity_price:            0.2516,
-  electricity_price_hp:         0.2550,  // Tarif Bleu option HP
-  electricity_price_hc:         0.2060,  // Tarif Bleu option HC
+  electricity_price:            0.2001,
+  electricity_price_hp:         0.2142,  // Tarif Bleu option HP (01/08/2026)
+  electricity_price_hc:         0.1589,  // Tarif Bleu option HC (01/08/2026)
   tariff_type:                  'base',  // 'base' | 'hphc'
-  electricity_price_updated_at: '2025-02-01',
-  buyback_rate:             0.1302,
+  electricity_price_updated_at: '2026-08-01',
+  buyback_rate:             0.011,
   regional_production:      1100,
-  self_consumption_rate:    70,     // utilisé uniquement si pas de conso client
-  inflation_rate:           5,
+  self_consumption_rate:    50,     // utilisé uniquement si pas de conso client
+  inflation_rate:           2,
   degradation_rate:         0.4,
-  prime_per_kwc:            380,   // palier < 3 kWc (barème S21 2025)
-  prime_per_kwc_9:          290,   // palier 3-9 kWc
-  prime_per_kwc_36:         180,   // palier 9-36 kWc
-  prime_per_kwc_100:        90,    // palier 36-100 kWc
+  prime_per_kwc:            0,     // prime supprimée (arrêté 01/06/2026) — modifiable si droits antérieurs
+  prime_per_kwc_9:          0,
+  prime_per_kwc_36:         0,
+  prime_per_kwc_100:        0,
   installation_cost_per_wc: 2.5,
   inverter_replacement_year: 13,   // remplacement onduleur attendu
   inverter_cost_per_kwc:    300,   // coût remplacement par kWc
   battery_cost_per_kwh:     700,    // ~€ / kWh de batterie (pose incl.)
+  tariff_version:           TARIFF_VERSION,
   company_name:             "SolarPro",
   company_address:          "",
   company_phone:            "",
@@ -299,19 +306,19 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
     selfConsRate = r.selfConsRate;
     consMode     = batteryKwh > 0 ? 'monthly+battery' : 'monthly';
   } else {
-    const rate = (settings.self_consumption_rate || 70) / 100;
+    const rate = (settings.self_consumption_rate || 50) / 100;
     selfConsumed = Math.round(annualProduction * rate);
     surplus      = Math.round(annualProduction * (1 - rate));
     selfConsRate = rate;
     consMode     = 'flat-rate';
   }
 
-  // ── Revenus annuels (avec HP/HC optionnel) ────────────────────────────
+  // ── Revenus annuels (avec HP/HC optionnel) — Tarif Bleu 01/08/2026 ────
   const tariff      = settings.tariff_type || 'base';
-  const elecPrice   = settings.electricity_price   || 0.2516;
-  const elecPriceHP = settings.electricity_price_hp || 0.2550;
-  const elecPriceHC = settings.electricity_price_hc || 0.2060;
-  const buybackRate = settings.buyback_rate || 0.1302;
+  const elecPrice   = settings.electricity_price   || 0.2001;
+  const elecPriceHP = settings.electricity_price_hp || 0.2142;
+  const elecPriceHC = settings.electricity_price_hc || 0.1589;
+  const buybackRate = settings.buyback_rate ?? 0.011;
 
   // Solaire ≈ 100 % en heures pleines (production mi-journée = HP).
   // Donc en tarif HP/HC, l'autoconso économise au prix HP (plus avantageux).
@@ -326,11 +333,13 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
   const batteryCost   = Math.round(batteryKwh * (settings.battery_cost_per_kwh || 700));
   const totalCost     = panelCost + installCost + batteryCost;
 
-  // Prime selon puissance installée (barème paramétrable dans Settings)
-  const primePerKwc = totalKwc < 3  ? (settings.prime_per_kwc     ?? 380)
-                    : totalKwc < 9  ? (settings.prime_per_kwc_9   ?? 290)
-                    : totalKwc < 36 ? (settings.prime_per_kwc_36  ?? 180)
-                    :                 (settings.prime_per_kwc_100 ?? 90);
+  // Prime autoconsommation supprimée depuis le 04/06/2026 (arrêté du 01/06/2026).
+  // Les paliers restent paramétrables dans Settings pour les dossiers dont la
+  // demande de raccordement est antérieure au 04/06/2026 (droits conservés).
+  const primePerKwc = totalKwc < 3  ? (settings.prime_per_kwc     ?? 0)
+                    : totalKwc < 9  ? (settings.prime_per_kwc_9   ?? 0)
+                    : totalKwc < 36 ? (settings.prime_per_kwc_36  ?? 0)
+                    :                 (settings.prime_per_kwc_100 ?? 0);
   const primeAutoConsommation = Math.round(primePerKwc * totalKwc);
   const resteACharge          = Math.max(0, totalCost - primeAutoConsommation);
 
@@ -339,7 +348,7 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
     : null;
 
   // ── Projection 25 ans ─────────────────────────────────────────────────
-  const inflationRate  = (settings.inflation_rate  || 5)   / 100;
+  const inflationRate  = (settings.inflation_rate  || 2)   / 100;
   const degradationRate= (settings.degradation_rate|| 0.4) / 100;
 
   const projections = [];
@@ -357,7 +366,9 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
     const yearAuto       = yearProd * selfConsRate;
     const yearSurplus    = yearProd * (1 - selfConsRate);
     const yearSavings    = Math.round(yearAuto * autoElecPrice * inflFactor);
-    const yearBuyback    = Math.round(yearSurplus * buybackRate); // tarif fixe 20 ans
+    // Contrat EDF OA : 20 ans, tarif indexé +2%/an (arrêté 01/06/2026) ; rien après
+    const buybackIndexed = buybackRate * Math.pow(1.02, year - 1);
+    const yearBuyback    = year <= 20 ? Math.round(yearSurplus * buybackIndexed) : 0;
     let   yearBenefit    = yearSavings + yearBuyback;
     if (year === inverterReplacementYear) yearBenefit -= inverterReplacementCost;
     cumulativeGains     += yearBenefit;

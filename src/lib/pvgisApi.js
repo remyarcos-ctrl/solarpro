@@ -169,44 +169,43 @@ function getRegionalFallbackPVGIS(lat, lon) {
   };
 }
 
-// ── Aides nationales 2025 (hardcodées — mises à jour manuellement) ────────
+// ── Aides nationales août 2026 (hardcodées — mises à jour manuelles) ──────
+// Arrêté du 01/06/2026 : prime autoconsommation SUPPRIMÉE pour tout
+// raccordement demandé depuis le 04/06/2026 ; rachat surplus unifié à
+// 0,011 €/kWh (≤100 kWc), indexé +2%/an sur 20 ans.
 export async function fetchRegionalAids(lat, lon, zipcode = null) {
   const regional = getRegionalIrradiance(lat, lon);
-  let bonusRegional = 0;
-  if (regional.zone === 'Méditerranée') bonusRegional = 50;
-  else if (regional.zone === 'Midi-Pyrénées') bonusRegional = 30;
-  else if (regional.zone === 'Aquitaine') bonusRegional = 20;
-
   return {
-    prime_lt3_kwc:              380 + bonusRegional,
-    prime_lt9_kwc:              290,
-    prime_lt36_kwc:             180,
-    prime_autoconsommation_kwc: 380 + bonusRegional,
-    tarif_rachat_lt3:           0.1302,
-    tva_reduite:                10,
+    prime_lt3_kwc:              0,
+    prime_lt9_kwc:              0,
+    prime_lt36_kwc:             0,
+    prime_autoconsommation_kwc: 0,
+    tarif_rachat_lt3:           0.011,
+    tva_reduite:                5.5,
     eco_ptz_max:                30000,
     maprimerenov:               0,
     region:                     regional.zone,
     city:                       regional.city,
     aidesLocales:               [],
     sources: [
-      'Prime autoconsommation — Arrêté tarifaire EDF OA 2025',
-      'TVA 10% (Art. 278-0 bis CGI)',
+      'Prime autoconsommation supprimée — Arrêté du 01/06/2026 (raccordements dès le 04/06/2026)',
+      'Rachat surplus 0,011 €/kWh ≤100 kWc, indexé 2%/an — Arrêté du 01/06/2026',
+      'TVA 5,5% installations ≤9 kWc (depuis oct. 2025)',
       'Éco-PTZ max 30 000€ (Art. 244 quater U CGI)',
     ],
-    updated: '2025-01-01',
+    updated: '2026-08-01',
   };
 }
 
-// ── Prix EDF — tarif fixe CRE 2025 (mise à jour manuelle dans Paramètres) ──
+// ── Prix EDF — Tarif Bleu (mise à jour manuelle dans Paramètres) ──────────
 export async function fetchEDFPrice() {
   return {
-    price:      0.2516,
-    price_hp:   0.2550,
-    price_hc:   0.2060,
-    tarif:      'Tarif Bleu Base EDF — Février 2025',
-    evolution:  '+5.3% vs 2024',
-    lastUpdate: '2025-02-01',
+    price:      0.2001,
+    price_hp:   0.2142,
+    price_hc:   0.1589,
+    tarif:      'Tarif Bleu Base EDF — Août 2026',
+    evolution:  '+2.5% vs 2025',
+    lastUpdate: '2026-08-01',
     source:     'CRE / EDF',
   };
 }

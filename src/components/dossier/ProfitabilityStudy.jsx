@@ -69,7 +69,9 @@ export default function ProfitabilityStudy({ profitability, settings }) {
           <StatRow icon={Calculator} label="Coût panneaux" value={formatCurrency(profitability.panelCost)} />
           <StatRow icon={Calculator} label="Coût installation" value={formatCurrency(profitability.installationCost)} />
           <StatRow icon={Calculator} label="Coût total" value={formatCurrency(profitability.totalCost)} />
-          <StatRow icon={Award} label="Prime autoconsommation" value={`- ${formatCurrency(profitability.primeAutoConsommation)}`} highlight />
+          {profitability.primeAutoConsommation > 0 && (
+            <StatRow icon={Award} label="Prime autoconsommation" value={`- ${formatCurrency(profitability.primeAutoConsommation)}`} highlight />
+          )}
           <StatRow icon={Banknote} label="Reste à charge" value={formatCurrency(profitability.resteACharge)} highlight />
         </div>
       </div>

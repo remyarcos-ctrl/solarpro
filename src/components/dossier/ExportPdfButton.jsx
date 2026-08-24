@@ -225,9 +225,11 @@ export default function ExportPdfButton({ client, panel, profitability, settings
       if (profitability.batteryCost > 0) {
         costLines.push(["Batterie de stockage", fmt(profitability.batteryCost), WHITE]);
       }
+      costLines.push(["Coût total brut", fmt(profitability.totalCost), WHITE]);
+      if (profitability.primeAutoConsommation > 0) {
+        costLines.push(["Prime à l'autoconsommation", `- ${fmt(profitability.primeAutoConsommation)}`, GREEN]);
+      }
       costLines.push(
-        ["Coût total brut", fmt(profitability.totalCost), WHITE],
-        ["Prime à l'autoconsommation", `- ${fmt(profitability.primeAutoConsommation)}`, GREEN],
         ["Reste à charge", fmt(profitability.resteACharge), GOLD],
         ["Retour sur investissement", `${profitability.roiYears} ans`, GREEN],
       );
@@ -301,7 +303,7 @@ export default function ExportPdfButton({ client, panel, profitability, settings
         `Production : ${pvgisData?.annualKwhPerKwc || settings?.regional_production || 1100} kWh/kWc/an${pvgisData ? ' (PVGIS réel)' : ''}`,
         `Performance Ratio moyen (PR) : ${profitability.avgPR || '—'}% (E_y/H(i)_y × ombrage)`,
         tariffLabel,
-        `Tarif rachat surplus : ${(settings?.buyback_rate || 0.1302).toFixed(4).replace('.', ',')} €/kWh (fixé 20 ans)`,
+        `Tarif rachat surplus : ${(settings?.buyback_rate ?? 0.011).toFixed(4).replace('.', ',')} €/kWh (indexé +2%/an, contrat 20 ans)`,
       ];
       if (profitability.consMode === 'monthly' || profitability.consMode === 'monthly+battery') {
         hyps.push(`Conso foyer : ${fmtN(profitability.annualConsKwh)} kWh/an — profil « ${profileLabels[profitability.profileKey] || profitability.profileKey} »`);
@@ -313,7 +315,7 @@ export default function ExportPdfButton({ client, panel, profitability, settings
         hyps.push(`Batterie : ${profitability.batteryKwh} kWh (~${Math.round(profitability.batteryKwh * 30 * 0.9)} kWh stockés/mois)`);
       }
       hyps.push(
-        `Inflation électricité : ${settings?.inflation_rate ?? 5}%/an`,
+        `Inflation électricité : ${settings?.inflation_rate ?? 2}%/an`,
         `Dégradation panneaux : ${settings?.degradation_rate ?? 0.4}%/an`,
         `Facteur CO₂ mix électrique : ${Math.round((settings?.co2_kg_per_kwh ?? 0.052) * 1000)} g/kWh${settings?.co2_kg_per_kwh ? ' (RTE eCO2mix)' : ' (ADEME 2024)'}`,
       );

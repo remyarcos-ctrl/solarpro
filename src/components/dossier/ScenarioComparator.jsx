@@ -193,7 +193,7 @@ export default function ScenarioComparator({ pans, panel, settings, pvgisData, p
                   />
                   <OverrideRow label="Prix élec. (€/kWh)"
                     value={sc.overrides.electricityPrice}
-                    placeholder={String(settings?.electricity_price ?? 0.2516)}
+                    placeholder={String(settings?.electricity_price ?? 0.2001)}
                     type="number" min={0.01} step={0.001}
                     onChange={v => updateOverride(sc.id, "electricityPrice", v === "" ? null : Number(v))}
                   />
