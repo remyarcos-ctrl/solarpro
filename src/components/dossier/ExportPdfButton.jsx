@@ -189,9 +189,12 @@ export default function ExportPdfButton({ client, panel, profitability, settings
       const bilanLines = [
         ["Production annuelle", `${fmtN(profitability.annualProduction)} kWh`, WHITE],
         [autoLabel, `${fmtN(profitability.selfConsumed)} kWh`, GREEN],
-        ["Surplus injecté réseau", `${fmtN(profitability.surplus)} kWh`, BLUE],
+        [profitability.surplusMode === 'bv' ? "Surplus stocké (batterie virtuelle)" : "Surplus injecté réseau", `${fmtN(profitability.surplus)} kWh`, BLUE],
         ["Économies sur facture", `${fmt(profitability.annualSavings)}/an`, GREEN],
-        ["Revenus revente surplus", `${fmt(profitability.annualBuybackRevenue)}/an`, BLUE],
+        [profitability.surplusMode === 'bv' ? "Surplus stocké en BV (net déstockage)" : "Revenus revente surplus", `${fmt(profitability.annualBuybackRevenue)}/an`, BLUE],
+        ...(profitability.surplusMode === 'bv' && profitability.bvAboAnnual > 0
+          ? [["Abonnement batterie virtuelle", `- ${fmt(profitability.bvAboAnnual)}/an`, GRAY]]
+          : []),
         ["Bénéfice annuel total", `${fmt(profitability.totalAnnualBenefit)}/an`, GOLD],
         ["CO₂ évité sur 25 ans", `${fmtN(profitability.co2SavedKg || 0)} kg`, GREEN],
       ];

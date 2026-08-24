@@ -42,7 +42,9 @@ export default function ProfitabilityStudy({ profitability, settings }) {
         <div className="space-y-2">
           <StatRow icon={Sun} label="Production annuelle" value={`${formatNumber(profitability.annualProduction)} kWh`} />
           <StatRow icon={Leaf} label={`Autoconsommation (${settings.self_consumption_rate}%)`} value={`${formatNumber(profitability.selfConsumed)} kWh`} />
-          <StatRow icon={TrendingUp} label="Surplus revendu" value={`${formatNumber(profitability.surplus)} kWh`} />
+          <StatRow icon={TrendingUp}
+            label={profitability.surplusMode === 'bv' ? "Surplus stocké (BV)" : "Surplus revendu"}
+            value={`${formatNumber(profitability.surplus)} kWh`} />
         </div>
       </div>
 

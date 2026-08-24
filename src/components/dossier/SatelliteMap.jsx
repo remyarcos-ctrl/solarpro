@@ -701,6 +701,7 @@ function MapController({
     const googleSolar = solarDataRef?.current?.solarPotential;
     const excludedPanelIds = excludedPanelsRef.current;
     let totalYearlyKwh = 0;
+    const gridMaxById = {};
 
     currentPans.forEach(pan => {
       const coef   = getSolarCoefficient(pan.orientation, pan.inclination);
@@ -742,6 +743,7 @@ function MapController({
         max  = g.max;
       }
       totalMax += max;
+      gridMaxById[pan.id] = max;
 
       if (pts.length > 0) {
         const minLng = Math.min(...pts.map(p => p[0]));
@@ -758,6 +760,18 @@ function MapController({
         properties: { panId: pan.id, fillColor: colors.fill, lineColor: colors.line },
       }));
     });
+
+    // Le vrai max par pan = capacité de la GRILLE dessinée (pas la formule
+    // par surface) — sinon le récapitulatif et l'étude divergent (120 vs 105).
+    const needsSync = currentPans.some(p =>
+      gridMaxById[p.id] != null && gridMaxById[p.id] !== p.maxPanels);
+    if (needsSync) {
+      setPans(prev => prev.map(p =>
+        gridMaxById[p.id] != null && gridMaxById[p.id] !== p.maxPanels
+          ? { ...p, maxPanels: gridMaxById[p.id] }
+          : p
+      ));
+    }
 
     const totalArea = currentPans.reduce((s, p) => s + (p.area || 0), 0);
     window.__smTotalYearlyKwh = Math.round(totalYearlyKwh);

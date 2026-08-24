@@ -209,7 +209,7 @@ export default function NewDossier() {
         {/* Centre */}
         <div className="space-y-6">
           <div className="card-elevated p-6">
-            <h2 className="text-lg font-semibold mb-4">Vue satellite & Calpinage multi-pans</h2>
+            <h2 className="text-lg font-semibold mb-4">Vue satellite & Calepinage multi-pans</h2>
             <SatelliteMap
               address={data.address}
               panelCount={data.panel_count || 0}

@@ -11,8 +11,12 @@ export default function PanSummaryTable({ pans, onUpdatePan, onDeletePan, panel,
 
   const globalProdPerKwc = pvgisData?.annualKwhPerKwc || settings?.regional_production || 1100;
   const elecPrice        = settings?.electricity_price || 0.2001;
-  const buybackRate      = settings?.buyback_rate ?? 0.011;
   const selfConsRate     = (settings?.self_consumption_rate ?? 50) / 100;
+  // Valeur du surplus : batterie virtuelle (kWh évité − déstockage) ou vente EDF OA
+  const bvMode           = (settings?.surplus_mode || 'bv') === 'bv';
+  const surplusValue     = bvMode
+    ? Math.max(0, elecPrice - (settings?.bv_destockage_eur_kwh ?? 0.10))
+    : (settings?.buyback_rate ?? 0.011);
   // pvgisSource présent → E_y inclut déjà pertes système + température
   const pvgisMode        = !!(pvgisData?.pvgisSource || settings?.pvgisSource);
   // PR PVGIS réel (E_y / H(i)_y) — fallback 0.80. Un bon système France = 75-85 %.
@@ -52,7 +56,7 @@ export default function PanSummaryTable({ pans, onUpdatePan, onDeletePan, panel,
   const totalProd   = pans.reduce((s, p) => s + calcPanProd(p).prod, 0);
 
   const totalKwc    = (totalPanels * (panel?.power_wc || 0)) / 1000;
-  const totalSavings= Math.round(totalProd * (elecPrice * selfConsRate + buybackRate * (1 - selfConsRate)));
+  const totalSavings= Math.round(totalProd * (elecPrice * selfConsRate + surplusValue * (1 - selfConsRate)));
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -82,7 +86,7 @@ export default function PanSummaryTable({ pans, onUpdatePan, onDeletePan, panel,
               const { prod, PR, coef, shading } = calcPanProd(pan);
               const rec     = getPanRecommendation(coef);
               const kwc     = ((pan.maxPanels || 0) * (panel?.power_wc || 0)) / 1000;
-              const savings = Math.round(prod * (elecPrice * selfConsRate + buybackRate * (1 - selfConsRate)));
+              const savings = Math.round(prod * (elecPrice * selfConsRate + surplusValue * (1 - selfConsRate)));
               const prodBase = pan.pvgisKwhPerKwc || globalProdPerKwc;
               const color   = PAN_COLORS[idx % PAN_COLORS.length];
               const oriLabel= ORIENTATIONS.find(o => o.value === pan.orientation)?.label || pan.orientation;
@@ -355,8 +359,8 @@ export default function PanSummaryTable({ pans, onUpdatePan, onDeletePan, panel,
                                 <span className="text-emerald-400">{Math.round(prod * selfConsRate * elecPrice).toLocaleString("fr-FR")} €</span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-muted-foreground">Surplus revendu</span>
-                                <span className="text-blue-400">{Math.round(prod * (1 - selfConsRate) * buybackRate).toLocaleString("fr-FR")} €</span>
+                                <span className="text-muted-foreground">{bvMode ? "Surplus stocké (BV)" : "Surplus revendu"}</span>
+                                <span className="text-blue-400">{Math.round(prod * (1 - selfConsRate) * surplusValue).toLocaleString("fr-FR")} €</span>
                               </div>
                               <div className="flex justify-between font-semibold border-t border-border pt-1">
                                 <span className="text-muted-foreground">Total</span>
