@@ -101,8 +101,8 @@ export default function ConsumptionConfigurator({ data, onChange, settings, onSe
           <Select value={tariff} onValueChange={(v) => onSettingsChange?.({ tariff_type: v })}>
             <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="base">Tarif Bleu Base ({(settings?.electricity_price ?? 0.2516).toFixed(4).replace('.', ',')} €/kWh)</SelectItem>
-              <SelectItem value="hphc">HP / HC ({(settings?.electricity_price_hp ?? 0.2550).toFixed(4).replace('.', ',')} HP / {(settings?.electricity_price_hc ?? 0.2060).toFixed(4).replace('.', ',')} HC)</SelectItem>
+              <SelectItem value="base">Tarif Bleu Base ({(settings?.electricity_price ?? 0.2001).toFixed(4).replace('.', ',')} €/kWh)</SelectItem>
+              <SelectItem value="hphc">HP / HC ({(settings?.electricity_price_hp ?? 0.2142).toFixed(4).replace('.', ',')} HP / {(settings?.electricity_price_hc ?? 0.1589).toFixed(4).replace('.', ',')} HC)</SelectItem>
             </SelectContent>
           </Select>
           {tariff === "hphc" && (

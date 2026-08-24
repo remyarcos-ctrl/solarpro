@@ -180,7 +180,7 @@ export default function ExportPdfButton({ client, panel, profitability, settings
       y += chartH + 8;
       doc.setTextColor(...GOLD); doc.setFontSize(9); doc.setFont("helvetica", "bold");
       doc.text("Bilan production & consommation", M, y); y += 6;
-      const autoRate = profitability.selfConsRate ?? (settings?.self_consumption_rate || 70);
+      const autoRate = profitability.selfConsRate ?? (settings?.self_consumption_rate || 50);
       const autoLabel = profitability.consMode === 'monthly+battery'
         ? `Autoconsommation (${autoRate}%, calcul mensuel + batterie)`
         : profitability.consMode === 'monthly'
@@ -290,7 +290,7 @@ export default function ExportPdfButton({ client, panel, profitability, settings
       doc.text("Hypothèses de calcul", M, y); y += 5;
       const tariffLabel = profitability.tariff === 'hphc'
         ? `HP/HC — autoconso valorisée à ${(profitability.autoElecPrice || settings?.electricity_price_hp || 0.255).toFixed(4).replace('.', ',')} €/kWh (prix HP)`
-        : `Tarif Bleu Base — ${(profitability.autoElecPrice || settings?.electricity_price || 0.2516).toFixed(4).replace('.', ',')} €/kWh`;
+        : `Tarif Bleu Base — ${(profitability.autoElecPrice || settings?.electricity_price || 0.2001).toFixed(4).replace('.', ',')} €/kWh`;
       const profileLabels = {
         standard: 'résidence principale',
         electric_heating: 'chauffage électrique',
@@ -309,7 +309,7 @@ export default function ExportPdfButton({ client, panel, profitability, settings
         hyps.push(`Conso foyer : ${fmtN(profitability.annualConsKwh)} kWh/an — profil « ${profileLabels[profitability.profileKey] || profitability.profileKey} »`);
         hyps.push(`Autoconsommation : ${profitability.selfConsRate}% (calcul mensuel réel)`);
       } else {
-        hyps.push(`Autoconsommation : ${profitability.selfConsRate || settings?.self_consumption_rate || 70}% (taux fixe)`);
+        hyps.push(`Autoconsommation : ${profitability.selfConsRate || settings?.self_consumption_rate || 50}% (taux fixe)`);
       }
       if (profitability.batteryKwh > 0) {
         hyps.push(`Batterie : ${profitability.batteryKwh} kWh (~${Math.round(profitability.batteryKwh * 30 * 0.9)} kWh stockés/mois)`);
