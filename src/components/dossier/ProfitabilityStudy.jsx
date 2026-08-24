@@ -15,7 +15,7 @@ function StatRow({ icon: Icon, label, value, highlight }) {
   );
 }
 
-export default function ProfitabilityStudy({ profitability, settings }) {
+export default function ProfitabilityStudy({ profitability, settings, costOverride, onCostOverrideChange }) {
   if (!profitability) {
     return (
       <div className="rounded-xl bg-card border border-border p-8 text-center">
@@ -41,10 +41,18 @@ export default function ProfitabilityStudy({ profitability, settings }) {
         </h3>
         <div className="space-y-2">
           <StatRow icon={Sun} label="Production annuelle" value={`${formatNumber(profitability.annualProduction)} kWh`} />
-          <StatRow icon={Leaf} label={`Autoconsommation (${settings.self_consumption_rate}%)`} value={`${formatNumber(profitability.selfConsumed)} kWh`} />
+          <StatRow icon={Leaf}
+            label={`Autoconsommation (${profitability.selfConsRate ?? settings.self_consumption_rate}%${profitability.consMode?.startsWith('monthly') ? ' — calcul réel' : ' — taux fixe'})`}
+            value={`${formatNumber(profitability.selfConsumed)} kWh`} />
           <StatRow icon={TrendingUp}
             label={profitability.surplusMode === 'bv' ? "Surplus stocké (BV)" : "Surplus revendu"}
             value={`${formatNumber(profitability.surplus)} kWh`} />
+          {profitability.surplusPerdu > 0 && (
+            <div className="flex items-center justify-between py-2 px-4 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs">
+              <span className="text-amber-400">⚠ Surplus au-delà de la conso du foyer — non valorisé</span>
+              <span className="font-semibold text-amber-400">{formatNumber(profitability.surplusPerdu)} kWh</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -73,12 +81,33 @@ export default function ProfitabilityStudy({ profitability, settings }) {
           Coûts & Financement
         </h3>
         <div className="space-y-2">
-          <StatRow icon={Calculator} label="Coût panneaux" value={formatCurrency(profitability.panelCost)} />
-          <StatRow icon={Calculator} label="Coût installation" value={formatCurrency(profitability.installationCost)} />
-          {profitability.bvAdhesion > 0 && (
-            <StatRow icon={Calculator} label="Adhésion batterie virtuelle (Urban Solar)" value={formatCurrency(profitability.bvAdhesion)} />
+          {onCostOverrideChange && (
+            <div className="py-3 px-4 rounded-lg bg-secondary/30 space-y-1.5">
+              <label className="text-xs text-muted-foreground uppercase tracking-wider">Coût de l'installation TTC — votre prix</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min="0" step="100"
+                  value={costOverride || ""}
+                  onChange={e => onCostOverrideChange(Number(e.target.value) || 0)}
+                  placeholder={`estimation : ${formatCurrency(profitability.estimatedCost)}`}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60"
+                />
+                <span className="text-sm text-muted-foreground">€</span>
+              </div>
+            </div>
           )}
-          <StatRow icon={Calculator} label="Coût total" value={formatCurrency(profitability.totalCost)} />
+          {!profitability.costIsOverride && (
+            <>
+              <StatRow icon={Calculator} label="Coût panneaux (estimation)" value={formatCurrency(profitability.panelCost)} />
+              <StatRow icon={Calculator} label="Coût installation (estimation)" value={formatCurrency(profitability.installationCost)} />
+              {profitability.bvAdhesion > 0 && (
+                <StatRow icon={Calculator} label="Adhésion batterie virtuelle (Urban Solar)" value={formatCurrency(profitability.bvAdhesion)} />
+              )}
+            </>
+          )}
+          <StatRow icon={Calculator}
+            label={profitability.costIsOverride ? "Coût total (votre prix)" : "Coût total (estimation)"}
+            value={formatCurrency(profitability.totalCost)} />
           {profitability.primeAutoConsommation > 0 && (
             <StatRow icon={Award} label="Prime autoconsommation" value={`- ${formatCurrency(profitability.primeAutoConsommation)}`} highlight />
           )}
@@ -89,7 +118,7 @@ export default function ProfitabilityStudy({ profitability, settings }) {
       {/* ROI */}
       <div className="rounded-xl bg-primary/10 border border-primary/30 p-6 text-center">
         <p className="text-sm text-muted-foreground mb-2">Retour sur investissement</p>
-        <p className="text-4xl font-bold text-primary">{profitability.roiYears} ans</p>
+        <p className="text-4xl font-bold text-primary">{profitability.roiYears != null ? `${profitability.roiYears} ans` : "> 25 ans"}</p>
       </div>
 
       {/* Milestones */}

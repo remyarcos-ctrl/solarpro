@@ -387,7 +387,12 @@ export default function DossierDetail() {
               <span className="text-foreground">Étude de</span>{' '}
               <span className="gradient-text">rentabilité</span>
             </h2>
-            <ProfitabilityStudy profitability={profitability} settings={settingsWithPVGIS} />
+            <ProfitabilityStudy
+              profitability={profitability}
+              settings={settingsWithPVGIS}
+              costOverride={data?.cost_override}
+              onCostOverrideChange={(v) => setData(d => ({ ...d, cost_override: v }))}
+            />
           </div>
         </div>
 

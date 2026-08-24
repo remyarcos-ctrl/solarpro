@@ -68,7 +68,7 @@ export default function ExportPdfButton({ client, panel, profitability, settings
         { v: `${profitability.totalPowerKwc} kWc`, l: "Puissance" },
         { v: `${fmtN(profitability.annualProduction)} kWh`, l: "Production/an" },
         { v: fmt(profitability.resteACharge), l: "Reste à charge" },
-        { v: `${profitability.roiYears} ans`, l: "Retour invest." },
+        { v: profitability.roiYears != null ? `${profitability.roiYears} ans` : "> 25 ans", l: "Retour invest." },
       ];
       const kw = CW / kpis.length;
       kpis.forEach((k, i) => {
@@ -237,7 +237,7 @@ export default function ExportPdfButton({ client, panel, profitability, settings
       }
       costLines.push(
         ["Reste à charge", fmt(profitability.resteACharge), GOLD],
-        ["Retour sur investissement", `${profitability.roiYears} ans`, GREEN],
+        ["Retour sur investissement", profitability.roiYears != null ? `${profitability.roiYears} ans` : "> 25 ans", GREEN],
       );
       if (profitability.inverterReplacementCost > 0) {
         costLines.push([

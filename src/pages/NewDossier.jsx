@@ -11,9 +11,11 @@ import { calculateProfitability } from "@/lib/solarCalculations";
 import ClientForm from "@/components/dossier/ClientForm";
 import SatelliteMap from "@/components/dossier/SatelliteMap";
 import PanelConfigurator from "@/components/dossier/PanelConfigurator";
+import ConsumptionConfigurator from "@/components/dossier/ConsumptionConfigurator";
 import ProfitabilityStudy from "@/components/dossier/ProfitabilityStudy";
 import SolarAI from "@/components/dossier/SolarAI";
 import { fetchPVGISData, fetchRegionalAids, fetchEDFPrice } from "@/lib/pvgisApi";
+import { estimateConsumption } from "@/lib/consumptionEstimate";
 
 export default function NewDossier() {
   const navigate = useNavigate();
@@ -29,7 +31,13 @@ export default function NewDossier() {
     roof_area: 0, roof_area_usable: 0, roof_capture: null,
     roof_width: 0, roof_height: 0,
     total_power_kwc: 0, installation_cost: 0, annual_savings: 0, roi_years: 0,
+    annual_consumption_kwh: 0, consumption_profile: "standard",
+    has_battery: false, battery_kwh: 0, cost_override: 0, tariff_type: "base",
   });
+
+  // Estimation auto de la conso (ADEME DPE + ENEDIS) — même mécanique que DossierDetail
+  const [consoEstimate, setConsoEstimate] = useState(null);
+  const [consoLoading, setConsoLoading]   = useState(false);
 
   // Données PVGIS et aides
   const [pvgisData, setPvgisData]   = useState(null);
@@ -61,6 +69,18 @@ export default function NewDossier() {
     return () => clearInterval(interval);
   }, []);
 
+  // Estimation conso dès que l'adresse est localisée (DPE réel > moyenne Enedis)
+  useEffect(() => {
+    if (!coords || !data.address || consoEstimate) return;
+    setConsoLoading(true);
+    estimateConsumption(data.address)
+      .then(res => {
+        setConsoEstimate(res);
+        if (res.suggestion) toast.success(`🏠 Conso estimée : ${res.suggestion.value} kWh/an — ${res.suggestion.source}`);
+      })
+      .finally(() => setConsoLoading(false));
+  }, [coords]);
+
   // Charger PVGIS quand on a des coordonnées
   useEffect(() => {
     if (!coords || pvgisData) return;
@@ -87,10 +107,11 @@ export default function NewDossier() {
     const settingsWithPVGIS = pvgisData
       ? { ...settings, regional_production: pvgisData.annualKwhPerKwc, pvgisSource: pvgisData.pvgisSource }
       : settings;
-    // Passer les pans tracés : l'étude doit refléter le PVGIS par pan
-    // (orientation/inclinaison réelles), pas le mode simplifié Sud 30°.
-    return calculateProfitability(data.panel_count, selectedPanel, settingsWithPVGIS, pans, pvgisData);
-  }, [data.panel_count, selectedPanel, settings, pvgisData, pans]);
+    if (data.tariff_type) settingsWithPVGIS.tariff_type = data.tariff_type;
+    // Pans tracés + dossier (conso, profil, batterie, coût saisi) : l'étude
+    // utilise le PVGIS par pan et le calcul mensuel réel d'autoconsommation.
+    return calculateProfitability(data.panel_count, selectedPanel, settingsWithPVGIS, pans, pvgisData, data);
+  }, [data, selectedPanel, settings, pvgisData, pans]);
 
   const createMutation = useMutation({
     mutationFn: (clientData) => localClients.create(clientData),
@@ -173,6 +194,15 @@ export default function NewDossier() {
             <ClientForm data={data} onChange={setData} />
           </div>
 
+          <ConsumptionConfigurator
+            data={data}
+            onChange={(patch) => setData(d => ({ ...d, ...patch }))}
+            settings={settings}
+            onSettingsChange={(patch) => setData(d => ({ ...d, ...patch }))}
+            consoEstimate={consoEstimate}
+            consoLoading={consoLoading}
+          />
+
           <div className="card-elevated p-6">
             <h2 className="text-lg font-semibold mb-4">Configuration panneaux</h2>
             {panelsLoading
@@ -219,7 +249,19 @@ export default function NewDossier() {
               orientation={data.orientation || "portrait"}
               settings={pvgisData ? { ...settings, regional_production: pvgisData.annualKwhPerKwc } : settings}
               onRoofAreaChange={(brute, utile) => setData(d => ({ ...d, roof_area: brute, roof_area_usable: utile }))}
-              onMaxPanelsChange={max => setData(d => ({ ...d, max_panels: max, panel_count: (d.panel_count > 0) ? Math.min(d.panel_count, max) : max }))}
+              onMaxPanelsChange={max => setData(d => {
+                // Dimensionnement par défaut calé sur la conso du foyer :
+                // viser production ≈ conso annuelle, plafonné par le toit.
+                // Sans conso connue : tout le toit (comportement historique).
+                let def = max;
+                const cons = Number(d.annual_consumption_kwh) || 0;
+                const ey   = pvgisData?.annualKwhPerKwc || 0;
+                const kwcPanel = (selectedPanel?.power_wc || 500) / 1000;
+                if (cons > 0 && ey > 0) {
+                  def = Math.min(max, Math.max(1, Math.ceil(cons / ey / kwcPanel)));
+                }
+                return { ...d, max_panels: max, panel_count: (d.panel_count > 0) ? Math.min(d.panel_count, max) : def };
+              })}
               onCaptureReady={img => setData(d => ({ ...d, roof_capture: img }))}
               onRoofDimensionsChange={(w, h) => setData(d => ({ ...d, roof_width: w, roof_height: h }))}
             />
@@ -244,7 +286,12 @@ export default function NewDossier() {
         <div className="space-y-6">
           <div>
             <h2 className="text-xl font-semibold mb-4">Étude de rentabilité</h2>
-            <ProfitabilityStudy profitability={profitability} settings={settings} />
+            <ProfitabilityStudy
+              profitability={profitability}
+              settings={settings}
+              costOverride={data.cost_override}
+              onCostOverrideChange={(v) => setData(d => ({ ...d, cost_override: v }))}
+            />
           </div>
         </div>
 

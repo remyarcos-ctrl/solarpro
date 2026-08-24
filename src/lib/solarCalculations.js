@@ -344,17 +344,32 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
   const bvAboAnnual  = surplusMode === 'bv'
     ? Math.round(totalKwc * (settings.bv_abo_kwc_mois ?? 1.2) * 12) : 0;
   const bvAdhesion   = surplusMode === 'bv' ? (settings.bv_adhesion ?? 249) : 0;
-  const surplusUnitValue = surplusMode === 'bv'
-    ? Math.max(0, autoElecPrice - bvDestockage)
-    : buybackRate;
-  const annualBuybackRevenue = Math.round(surplus * surplusUnitValue);
+  let annualBuybackRevenue, bvDestocke = 0, surplusPerdu = 0;
+  if (surplusMode === 'bv') {
+    // RÉALISME : on ne déstocke de la BV que ce que le foyer consomme encore
+    // au réseau (conso résiduelle = conso annuelle − autoconsommé). Un surplus
+    // au-delà est perdu — sur une grande toiture il ne rapporte RIEN.
+    // Sans conso connue, hypothèse conservatrice impossible → tout absorbé
+    // (comportement historique, à affiner en saisissant la conso du foyer).
+    const residualCons = annualConsKwh > 0 ? Math.max(0, annualConsKwh - selfConsumed) : surplus;
+    bvDestocke   = Math.round(Math.min(surplus, residualCons));
+    surplusPerdu = Math.max(0, surplus - bvDestocke);
+    annualBuybackRevenue = Math.round(bvDestocke * Math.max(0, autoElecPrice - bvDestockage));
+  } else {
+    annualBuybackRevenue = Math.round(surplus * buybackRate);
+  }
   const totalAnnualBenefit   = annualSavings + annualBuybackRevenue - bvAboAnnual;
 
   // ── Coûts & financement ───────────────────────────────────────────────
+  // Principe (règle Rémy) : le COMMERCIAL saisit le prix ; l'estimation ne
+  // sert que de repère tant que rien n'est saisi.
   const panelCost     = Math.round(panelCount * (panel.price || 0));
   const installCost   = Math.round(totalKwc * 1000 * (settings.installation_cost_per_wc || 2.5));
   const batteryCost   = Math.round(batteryKwh * (settings.battery_cost_per_kwh || 700));
-  const totalCost     = panelCost + installCost + batteryCost + bvAdhesion;
+  const estimatedCost = panelCost + installCost + batteryCost + bvAdhesion;
+  const costOverride  = Number(dossier?.cost_override) || 0;
+  const costIsOverride = costOverride > 0;
+  const totalCost     = costIsOverride ? costOverride : estimatedCost;
 
   // Prime autoconsommation supprimée depuis le 04/06/2026 (arrêté du 01/06/2026).
   // Les paliers restent paramétrables dans Settings pour les dossiers dont la
@@ -393,8 +408,11 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
     if (surplusMode === 'bv') {
       // BV : le kWh évité suit l'inflation, l'acheminement au déstockage
       // reste forfaitaire ; l'abonnement BV est fixe (contrat fournisseur).
+      // Déstockage plafonné par la conso résiduelle, comme l'année 1.
+      const yearResid   = annualConsKwh > 0 ? Math.max(0, annualConsKwh - yearAuto) : yearSurplus;
+      const yearDestock = Math.min(yearSurplus, yearResid);
       const unitValue = Math.max(0, autoElecPrice * inflFactor - bvDestockage);
-      yearBuyback = Math.round(yearSurplus * unitValue) - bvAboAnnual;
+      yearBuyback = Math.round(yearDestock * unitValue) - bvAboAnnual;
     } else {
       // Contrat EDF OA : 20 ans, tarif indexé +2%/an (arrêté 01/06/2026) ; rien après
       const buybackIndexed = buybackRate * Math.pow(1.02, year - 1);
@@ -456,6 +474,12 @@ export function calculateProfitability(panelCount, panel, settings, pans = [], p
     bvAboAnnual,
     bvAdhesion,
     bvDestockage,
+    bvDestocke,
+    surplusPerdu,
+
+    // Coût : saisi par le commercial ou estimation-repère
+    costIsOverride,
+    estimatedCost,
 
     // Coûts
     panelCost,
