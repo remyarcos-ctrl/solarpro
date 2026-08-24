@@ -25,11 +25,14 @@ const GOOGLE_SOLAR_KEY = import.meta.env.VITE_GOOGLE_SOLAR_KEY;
 
 async function fetchGoogleSolarData(lat, lon) {
   try {
-    const url = `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${lat}&location.longitude=${lon}&requiredQuality=HIGH&key=${GOOGLE_SOLAR_KEY}`;
+    // Clé VITE présente (dev) → appel direct ; sinon (prod Vercel) → proxy
+    // serveur /api/solar qui porte GOOGLE_SOLAR_KEY, jamais exposée au client.
+    const url = GOOGLE_SOLAR_KEY
+      ? `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${lat}&location.longitude=${lon}&requiredQuality=HIGH&key=${GOOGLE_SOLAR_KEY}`
+      : `/api/solar?lat=${lat}&lon=${lon}`;
     const r = await fetch(url);
     if (!r.ok) throw new Error(`Solar API ${r.status}`);
     const data = await r.json();
-    const segs = data?.solarPotential?.roofSegmentStats;
     return data;
   } catch (e) {
     console.warn("[Solar API] ❌", e.message);
@@ -1438,7 +1441,7 @@ export default function SatelliteMap({
         {(!ready || loading) && (
           <div className="absolute inset-0 z-30 bg-card flex flex-col items-center justify-center gap-3">
             <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-            <p className="text-muted-foreground text-sm">{loading ? "Localisation en cours&#8230;" : "Chargement de la carte&#8230;"}</p>
+            <p className="text-muted-foreground text-sm">{loading ? "Localisation en cours…" : "Chargement de la carte…"}</p>
           </div>
         )}
         <Map id="satelliteMap" mapboxAccessToken={TOKEN}
