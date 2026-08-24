@@ -22,10 +22,20 @@ export default defineConfig({
         secure: true,
         rewrite: path => path.replace(/^\/anthropic/, ''),
       },
+      '/enedis-od': {
+        target: 'https://opendata.enedis.fr',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/enedis-od/, ''),
+      },
       '/enedis': {
         target: 'https://data.enedis.fr',
         changeOrigin: true,
         rewrite: path => path.replace(/^\/enedis/, ''),
+      },
+      '/odre': {
+        target: 'https://odre.opendatasoft.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/odre/, ''),
       },
       '/rte': {
         target: 'https://opendata.reseaux-energies.fr',

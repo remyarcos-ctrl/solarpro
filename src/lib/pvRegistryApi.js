@@ -7,7 +7,7 @@ import { openDataUrl } from "./openData";
 // Usage commercial : argument "X installations PV déjà dans votre commune,
 // puissance totale Y kWc, soit Z foyers équipés".
 
-const CACHE_KEY  = 'pv_registry_v1';
+const CACHE_KEY  = 'pv_registry_v2';
 const CACHE_TTL  = 30 * 24 * 3600 * 1000; // 30 jours (données trimestrielles)
 
 function cache(key) {
@@ -38,23 +38,34 @@ export async function fetchCommunePvStats(address) {
   if (cached) return cached;
 
   try {
-    // filière "Solaire" dans le registre, agrégation par commune + code postal
-    const url = `https://data.enedis.fr/api/explore/v2.1/catalog/datasets/registre-national-installation-production-stockage-electricite-agrege/records`
-      + `?where=${encodeURIComponent(`code_commune = "${commune.code}" AND filiere = "Solaire"`)}`
-      + `&limit=50`;
+    // 1. Code postal → code INSEE (le registre est indexé INSEE, pas postal —
+    //    l'ancien filtre code postal ne matchait jamais rien).
+    //    geo.api.gouv.fr : gratuite, CORS ouvert, appel direct.
+    const geoR = await fetch(
+      `https://geo.api.gouv.fr/communes?codePostal=${commune.code}&fields=code,nom&limit=1`,
+      { signal: AbortSignal.timeout(6000) }
+    );
+    if (!geoR.ok) throw new Error(`geo.api HTTP ${geoR.status}`);
+    const geo = await geoR.json();
+    const insee = geo?.[0]?.code;
+    if (!insee) return null;
+
+    // 2. Registre national via ODRÉ (data.enedis.fr a migré, records en 404 ;
+    //    le même dataset vit sur odre.opendatasoft.com)
+    const url = `https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/registre-national-installation-production-stockage-electricite-agrege/records`
+      + `?where=${encodeURIComponent(`codeinseecommune = "${insee}" and filiere = "Solaire"`)}`
+      + `&select=nbinstallations,puismaxinstallee&limit=100`;
     const r = await fetch(openDataUrl(url), { signal: AbortSignal.timeout(10000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     const records = data?.results || [];
     if (!records.length) return null;
 
-    // Agrégation : somme sur les tranches de puissance (T1…T6) et tous
-    // les énergies livrées (inj, consommation, etc.).
     let nbInstallations = 0;
     let puissanceTotaleKw = 0;
     for (const rec of records) {
-      nbInstallations   += Number(rec.nb_installations || 0);
-      puissanceTotaleKw += Number(rec.puissance_mw || 0) * 1000;
+      nbInstallations   += Number(rec.nbinstallations || 1);
+      puissanceTotaleKw += Number(rec.puismaxinstallee || 0);
     }
     if (nbInstallations === 0) return null;
 

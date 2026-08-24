@@ -5,7 +5,9 @@
 
 const DEV_PREFIXES = {
   'data.enedis.fr':                '/enedis',
+  'opendata.enedis.fr':            '/enedis-od',
   'opendata.reseaux-energies.fr':  '/rte',
+  'odre.opendatasoft.com':         '/odre',
   'data.ademe.fr':                 '/ademe',
 };
 

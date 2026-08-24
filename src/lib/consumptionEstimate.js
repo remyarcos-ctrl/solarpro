@@ -60,29 +60,34 @@ export async function fetchAdemeDPE(address) {
 }
 
 // ── ENEDIS Open Data ──────────────────────────────────────────────────────
-// https://data.enedis.fr — dataset consommation-annuelle-residentielle-par-adresse
-// Renvoie la conso moyenne (médiane) des foyers de cette adresse (MWh/an)
+// https://opendata.enedis.fr — dataset consommation-annuelle-residentielle-par-adresse
+// (data.enedis.fr a migré : ancien hôte = redirections cassées, et les
+// anciens noms de champs conso_moyenne_mwh n'ont jamais existé ici)
+// Renvoie la conso moyenne par site à cette adresse (kWh/an)
 export async function fetchEnedisConsumption(address) {
   if (!address) return null;
   try {
     const q = cleanAddress(address);
     const commune = extractCommune(address);
-    const filter = commune ? `&where=${encodeURIComponent(`nom_commune like "${commune}"`)}` : '';
-    const url = `https://data.enedis.fr/api/explore/v2.1/catalog/datasets/consommation-annuelle-residentielle-par-adresse/records`
-      + `?q=${encodeURIComponent(q)}${filter}&limit=3`;
+    const where = [`search(adresse, "${q.replace(/[",]/g, '').trim()}")`];
+    if (commune) where.push(`nom_commune like "${commune.replace(/"/g, '')}"`);
+    const url = `https://opendata.enedis.fr/api/explore/v2.1/catalog/datasets/consommation-annuelle-residentielle-par-adresse/records`
+      + `?where=${encodeURIComponent(where.join(' and '))}`
+      + `&order_by=${encodeURIComponent('annee desc')}&limit=3`;
     const r = await fetch(openDataUrl(url), { signal: AbortSignal.timeout(8000) });
     if (!r.ok) return null;
     const data = await r.json();
     const recs = data?.results || [];
     if (!recs.length) return null;
     const best = recs[0];
-    const consoMwh = best.conso_moyenne_mwh ?? best.consommation_moyenne_mwh ?? 0;
+    const consoMwh = Number(best.consommation_annuelle_moyenne_par_site_de_ladresse_mwh) || 0;
     if (!consoMwh) return null;
     return {
       source:       'ENEDIS Open Data',
-      adresse:      `${best.numero || best.numero_voie || ''} ${best.type_voie || ''} ${best.libelle_voie || ''}, ${best.nom_commune || ''}`.replace(/\s+/g, ' ').trim(),
+      adresse:      `${best.adresse || ''}, ${best.nom_commune || ''}`.replace(/\s+/g, ' ').trim(),
       consoMoyKwh:  Math.round(consoMwh * 1000),
-      nbLogements:  best.nombre_de_logements || best.nb_sites || null,
+      nbLogements:  best.nombre_de_logements || null,
+      annee:        best.annee || null,
     };
   } catch (e) {
     console.warn('[ENEDIS]', e.message);

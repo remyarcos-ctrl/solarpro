@@ -5,7 +5,9 @@
 
 const ALLOWED_HOSTS = new Set([
   'data.enedis.fr',
+  'opendata.enedis.fr',
   'opendata.reseaux-energies.fr',
+  'odre.opendatasoft.com',
   'data.ademe.fr',
 ]);
 
